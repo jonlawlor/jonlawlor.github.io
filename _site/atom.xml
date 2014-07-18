@@ -4,7 +4,7 @@
  <title>Relational Data Streams in Go</title>
  <link href="http://jonlawlor.github.io/atom.xml" rel="self"/>
  <link href="http://jonlawlor.github.io/"/>
- <updated>2014-07-18T00:15:02-04:00</updated>
+ <updated>2014-07-18T19:50:09-04:00</updated>
  <id>http://jonlawlor.github.io</id>
  <author>
    <name>Jonathan J Lawlor</name>
@@ -55,7 +55,7 @@
 
 &lt;h3&gt;Performance&lt;/h3&gt;
 
-&lt;p&gt;Now on to lots of tables!  I&amp;#39;ve implemented some simple test helping functions to generate example channels of tuples, that are used for benchmarking.  The code is found in my (relpipes)[https://github.com/jonlawlor/relpipes] package.  The computer used for testing is a Macbook with a 2.13 GHz Intel Core 2 Duo and 4 GB of RAM.&lt;/p&gt;
+&lt;p&gt;Now on to lots of tables!  I&amp;#39;ve implemented some simple test helping functions to generate example channels of tuples, that are used for benchmarking.  The code is found in my &lt;a href=&quot;https://github.com/jonlawlor/relpipes&quot;&gt;relpipes&lt;/a&gt; package.  The computer used for testing is a Macbook with a 2.13 GHz Intel Core 2 Duo and 4 GB of RAM.&lt;/p&gt;
 
 &lt;p&gt;The following table compares the amount of time it takes to perform the first &lt;code&gt;distinct&lt;/code&gt; implementation on varying sizes of inputs.  Because the performance depends on both the number of input tuples and the number of unique tuples, I tried a variety of different combinations.  The leftmost column gives the number of tuples sent to the distinct function, and the other columns measure how long it took to perform distinct, given that it has (as many as, not exactly) some number of unique tuples.  All times are in ns / operation.&lt;/p&gt;
 

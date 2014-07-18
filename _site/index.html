@@ -138,7 +138,7 @@
 
 <h3>Performance</h3>
 
-<p>Now on to lots of tables!  I&#39;ve implemented some simple test helping functions to generate example channels of tuples, that are used for benchmarking.  The code is found in my (relpipes)[https://github.com/jonlawlor/relpipes] package.  The computer used for testing is a Macbook with a 2.13 GHz Intel Core 2 Duo and 4 GB of RAM.</p>
+<p>Now on to lots of tables!  I&#39;ve implemented some simple test helping functions to generate example channels of tuples, that are used for benchmarking.  The code is found in my <a href="https://github.com/jonlawlor/relpipes">relpipes</a> package.  The computer used for testing is a Macbook with a 2.13 GHz Intel Core 2 Duo and 4 GB of RAM.</p>
 
 <p>The following table compares the amount of time it takes to perform the first <code>distinct</code> implementation on varying sizes of inputs.  Because the performance depends on both the number of input tuples and the number of unique tuples, I tried a variety of different combinations.  The leftmost column gives the number of tuples sent to the distinct function, and the other columns measure how long it took to perform distinct, given that it has (as many as, not exactly) some number of unique tuples.  All times are in ns / operation.</p>
 
