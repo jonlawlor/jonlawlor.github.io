@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en-us">
+
+  <head>
+  <link href="http://gmpg.org/xfn/11" rel="profile">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+
+  <!-- Enable responsiveness on mobile devices-->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+
+  <title>
+    
+      Distinct &middot; Relational Data Streams in Go
+    
+  </title>
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="/public/css/poole.css">
+  <link rel="stylesheet" href="/public/css/syntax.css">
+  <link rel="stylesheet" href="/public/css/lanyon.css">
+  <link rel="stylesheet" href="http://fonts.googleapis.com/css?family=PT+Serif:400,400italic,700|PT+Sans:400">
+
+  <!-- Icons -->
+  <link rel="apple-touch-icon-precomposed" sizes="144x144" href="/public/apple-touch-icon-precomposed.png">
+  <link rel="shortcut icon" href="/public/favicon.ico">
+
+  <!-- RSS -->
+  <link rel="alternate" type="application/rss+xml" title="RSS" href="/atom.xml">
+</head>
+
+
+  <body>
+
+    <!-- Target for toggling the sidebar `.sidebar-checkbox` is for regular
+     styles, `#sidebar-checkbox` for behavior. -->
+<input type="checkbox" class="sidebar-checkbox" id="sidebar-checkbox">
+
+<!-- Toggleable sidebar -->
+<div class="sidebar" id="sidebar">
+  <div class="sidebar-item">
+    <p>Combining relational algebra with pipelines in Go.<br>C. A. R. Hoare meets E. F. Codd!</p>
+  </div>
+
+  <nav class="sidebar-nav">
+    <a class="sidebar-nav-item" href="/">Home</a>
+
+    
+
+    
+    
+      
+        
+      
+    
+      
+        
+          <a class="sidebar-nav-item" href="/about/">About</a>
+        
+      
+    
+      
+    
+      
+        
+      
+    
+
+  </nav>
+
+  <div class="sidebar-item">
+    <p>
+      &copy; 2014. All rights reserved.
+    </p>
+  </div>
+</div>
+
+
+    <!-- Wrap is the content to shift when toggling the sidebar. We wrap the
+         content to avoid any CSS collisions with our real content. -->
+    <div class="wrap">
+      <div class="masthead">
+        <div class="container">
+          <h3 class="masthead-title">
+            <a href="/" title="Home">Relational Data Streams in Go</a>
+            <small></small>
+          </h3>
+        </div>
+      </div>
+
+      <div class="container content">
+        <div class="post">
+  <h1 class="post-title">Distinct</h1>
+  <span class="post-date">18 Jul 2014</span>
+  <p>The first operations we look at aren&#39;t even relational, but are useful for building other relational operations.  Distinct isn&#39;t a relational operation (although it is included in SQL) because by definition, relations are sets, and sets are always unique.  However, it is extremely useful, and represents a good starting point.  It also raises some interesting tradeoffs.</p>
+
+<p>The requirements for a distinct function are as follows:</p>
+
+<ul>
+<li>Takes input tuples from a channel with (possibly) duplicate tuples</li>
+<li>Sends results to an output channel with no duplicate tuples</li>
+</ul>
+
+<p>In Go, its signature should look something like this:</p>
+
+<div class="highlight"><pre><code class="go"><span class="kd">func</span> <span class="nx">distinct</span><span class="p">(</span><span class="nx">in</span> <span class="o">&lt;-</span><span class="kd">chan</span> <span class="nx">tuple</span><span class="p">,</span> <span class="nx">res</span> <span class="kd">chan</span><span class="o">&lt;-</span> <span class="nx">tuple</span><span class="p">)</span></code></pre></div>
+
+<p>For testing, I usually use a placeholder type fooBar in place of tuple:</p>
+
+<div class="highlight"><pre><code class="go"><span class="kd">type</span> <span class="nx">fooBar</span> <span class="kd">struct</span> <span class="p">{</span>
+    <span class="nx">foo</span> <span class="kt">int</span>
+    <span class="nx">bar</span> <span class="kt">int</span>
+<span class="p">}</span></code></pre></div>
+
+<script src="https://gist.github.com/jonlawlor/7e6b351f9df6338527d7.js"> </script>
+
+<p>There are a few things to notice about that distinct function.  When the inner, anonymous function terminates the <code>mem[tuple]struct{}{}</code> will have every tuple that it has ever sent still in it, which could be a problem.  Also, it can&#39;t be run in parallel between the same input and results channels, because then there would be two maps, and they would race to get and send values, which would cause duplicates.  On the plus side, it is quite succinct.</p>
+
+<p>So let&#39;s deal with the issue with parallelism first.  One response might be to just run the inner goroutine in parallel, but it will share a map, and <a href="http://golang.org/doc/faq#atomic_maps">maps are not concurrent</a>.  We can fix that with a <a href="http://golang.org/pkg/sync/#Mutex">sync.Mutex</a> to the mem.  In addition, if we have several goroutines handling the result channel, they have to coordinate closing that channel.  We can fix that with a <a href="http://golang.org/pkg/sync/#WaitGroup">sync.WaitGroup</a> and <em>another</em> goroutine.  In this case I&#39;ve decided to include an input argument <code>n</code> which tells it how many goroutines should operate concurrently.</p>
+
+<script src="https://gist.github.com/jonlawlor/c397499881da24fbf49d.js"> </script>
+
+<p>Now, when the input n to the parallel distinct function is &gt; 1, there will be several goroutines all pulling tuples from the input, and sending them to the output.  However, it seems like the process doesn&#39;t gain much because the map has to be shared.</p>
+
+<p>If we are willing to make some restrictions on how the input channel&#39;s data is ordered, then we can avoid using the map altogether.  Instead, we can just compare each input tuple with the previously sent result tuple, and if it is equal to it, then we discard it.</p>
+
+<script src="https://gist.github.com/jonlawlor/b490a04d363a6f04276c.js"> </script>
+
+<p>This has a big advantage over the first two in terms of memory use.  Also, it returns an ordered output.  However, it can&#39;t be used for unordered inputs.  Knowing the characteristics of the input makes a big difference in terms of memory, and as we will see, it also makes it faster.</p>
+
+<h3>Performance</h3>
+
+<p>Now on to lots of tables!  I&#39;ve implemented some simple test helping functions to generate example channels of tuples, that are used for benchmarking.  The code is found in my (relpipes)[https://github.com/jonlawlor/relpipes] package.  The computer used for testing is a Macbook with a 2.13 GHz Intel Core 2 Duo and 4 GB of RAM.</p>
+
+<p>The following table compares the amount of time it takes to perform the first <code>distinct</code> implementation on varying sizes of inputs.  Because the performance depends on both the number of input tuples and the number of unique tuples, I tried a variety of different combinations.  The leftmost column gives the number of tuples sent to the distinct function, and the other columns measure how long it took to perform distinct, given that it has (as many as, not exactly) some number of unique tuples.  All times are in ns / operation.</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Tuples</th>
+      <th>3 Unique</th>
+      <th>1000 Unique</th>
+      <th>100000 Unique</th>
+    </tr>
+  </thead>
+  <tbody>
+<tr>
+  <td>10</td>   <td>11418</td>  <td>16639</td>  <td>16669</td>
+</tr>
+<tr>
+  <td>100</td>  <td>76272</td>  <td>147966</td> <td>149888</td>
+</tr>
+<tr>
+  <td>1000</td> <td>717874</td> <td>1268456</td>    <td>1579900</td>
+</tr>
+<tr>
+  <td>10000</td>    <td>7211543</td>    <td>8190355</td>    <td>15097732</td>
+</tr>
+<tr>
+  <td>100000</td>   <td>71962786</td>   <td>73765912</td>   <td>130224777</td>
+</tr>
+<tr>
+  <td>1000000</td>  <td>724689732</td>  <td>730728605</td>  <td>854284016</td>
+</tr>
+  </tbody>
+</table>
+
+<p>As you can see, the time it takes grows proportionally to the number of input tuples, and depending on the number of unique values, there is an additional overhead.  I believe that is because the implementation hashes twice when a new tuple is added to the map, while a duplicate value only has a single comparison to make.</p>
+
+<p>In this next table, I&#39;ve divided the ns/op by the number of tuples, to get a sense for the per-tuple overhead.  Otherwise the rows and columns have the same meaning.  Units are ns/tuple input.
+<table>
+  <thead>
+    <tr>
+      <th>Tuples</th>
+      <th>3 Unique</th>
+      <th>1000 Unique</th>
+      <th>100000 Unique</th>
+    </tr>
+  </thead>
+<tbody>
+<tr>
+<td>10</td> <td>1142</td> <td>1664</td> <td>1667</td>
+</tr>
+<tr>
+<td>100</td> <td>763</td> <td>1480</td> <td>1499</td>
+</tr>
+<tr>
+<td>1000</td> <td>718</td> <td>1268</td> <td>1580</td>
+</tr>
+<tr>
+<td>10000</td> <td>721</td> <td>819</td> <td>1510</td>
+</tr>
+<tr>
+<td>100000</td> <td>720</td> <td>738</td> <td>1302</td>
+</tr>
+<tr>
+<td>1000000</td> <td>725</td> <td>731</td> <td>854</td>
+</tr>
+</tbody>
+</table></p>
+
+<p>It looks like the implementation takes about twice as long (1600 ns / tuple) when tuples are new, and about 800 ns / tuple otherwise.  This translates to somewhere in the range of 600k - 1.2M tuples / second.  If the channel which sends tuples to this function produced more than that rate, this function would fall behind.  There are some methods to deal with that (beyond faster hardware &amp; better performance) that we will get into in a later blog post.</p>
+
+<p>So, how does the parallel version perform?  I set GOMAXPROCs to 2, and performed the same tests as above (units are ns/tuple input):</p>
+
+<table>
+    <thead>
+        <tr>
+            <th>Tuples</th>
+            <th>3 Unique</th>
+            <th>1000 Unique</th>
+            <th>100000 Unique</th>
+        </tr>
+    </thead>
+<tbody>
+<tr>
+<td>10</td> <td>28669</td>  <td>33234</td>  <td>33060</td>
+</tr>
+<tr>
+<td>100</td>    <td>215048</td> <td>212194</td> <td>222439</td>
+</tr>
+<tr>
+<td>1000</td>   <td>2137649</td>    <td>2259830</td>    <td>1857265</td>
+</tr>
+<tr>
+<td>10000</td>  <td>21900233</td>   <td>21814935</td>   <td>17800176</td>
+</tr>
+<tr>
+<td>100000</td> <td>177486647</td>  <td>179204410</td>  <td>233804969</td>
+</tr>
+<tr>
+<td>1000000</td>    <td>1713882948</td> <td>1830978407</td> <td>2449220450</td>
+</tr>
+</tbody>
+</table>
+
+<p>Well, crap.  It is slower, by about a factor of 2.5x!  The fact that performance has degraded is a very strong suggestion that the locking is adding more overhead, without a corresponding performance boost.  Not all problems benefit from parallelism.  I&#39;m not going to bother showing the per-tuple performance.</p>
+
+<p>Instead, let&#39;s examine the performance of the ordered distinct operation.  I haven&#39;t benchmarked the memory usage of the previous two, but by inspection we can see that the memory usage will grow with the number of unique tuples, without bound.  The ordered program has constant memory usage.  Here is its performance (ns/op):</p>
+
+<table>
+    <thead>
+        <tr>
+            <th>Tuples</th>
+            <th>3 Unique</th>
+            <th>1000 Unique</th>
+            <th>100000 Unique</th>
+        </tr>
+    </thead>
+<tbody>
+<tr>
+<td>10</td> <td>11941</td>  <td>13041</td>  <td>12791</td>
+</tr>
+<tr>
+<td>100</td>    <td>89945</td>  <td>101685</td> <td>101925</td>
+</tr>
+<tr>
+<td>1000</td>   <td>908702</td> <td>996094</td> <td>995019</td>
+</tr>
+<tr>
+<td>10000</td>  <td>8780944</td>    <td>10039774</td>   <td>10078654</td>
+</tr>
+<tr>
+<td>100000</td> <td>88551917</td>   <td>101807795</td>  <td>101829774</td>
+</tr>
+<tr>
+<td>1000000</td>    <td>884714522</td>  <td>1022781810</td> <td>1015324417</td>
+</tr>
+</tbody>
+</table>
+
+<p>Well, this is slightly slower than the unordered version (~20% compared to best) but while the unordered version is still building up its map, this version is faster.  As an added bonus, the values coming out will be in the same order as those coming in.</p>
+
+<p>Here&#39;s the same table in ns/tuple:</p>
+
+<table>
+    <thead>
+        <tr>
+            <th>Tuples</th>
+            <th>3 Unique</th>
+            <th>1000 Unique</th>
+            <th>100000 Unique</th>
+        </tr>
+    </thead>
+<tbody>
+<tr>
+<td>10</td> <td>1194</td>   <td>1304</td>   <td>1279</td>
+</tr>
+<tr>
+<td>100</td>    <td>899</td>    <td>1017</td>   <td>1019</td>
+</tr>
+<tr>
+<td>1000</td>   <td>909</td>    <td>996</td>    <td>995</td>
+</tr>
+<tr>
+<td>10000</td>  <td>878</td>    <td>1004</td>   <td>1008</td>
+</tr>
+<tr>
+<td>100000</td> <td>886</td>    <td>1018</td>   <td>1018</td>
+</tr>
+<tr>
+<td>1000000</td>    <td>885</td>    <td>1023</td>   <td>1015</td>
+</tr>
+</tbody>
+</table>
+
+<p>So long term, this seems pretty stable around 1M tuples/s.  I&#39;m not sure why there is a jump from 3 unique values to 1000 unique values, so if anyone has any ideas on that I&#39;d like to hear them.</p>
+
+<p>On the other hand, the ordered distinct requires that the input is sorted.  If it is not already sorted, then we either have to use a different algorithm, or we have to read the entire (possibly <em>enormous</em>) input channel, and sort the whole thing before we can start producing results, which will result in enormous latency.</p>
+
+<h3>Conclusions</h3>
+
+<p>Even something as simple as finding unique values in an input channel exhibits some interesting tradeoffs, and we&#39;ve barely scratched the surface of data streams.  As a general rule: unsorted data streams often (but not always) require an unbounded amount of memory for exact results.  If we can impose some restrictions on how tuples will be input to a data stream operation, then we can reduce the amount of memory used dramatically, although that doesn&#39;t always mean better performance.  And adding more cores doesn&#39;t always result in better performance.</p>
+
+</div>
+
+<div class="related">
+  <h2>Related Posts</h2>
+  <ul class="related-posts">
+    
+  </ul>
+</div>
+
+
+
+      </div>
+    </div>
+
+    <label for="sidebar-checkbox" class="sidebar-toggle"></label>
+
+    <script>
+      (function(document) {
+        var toggle = document.querySelector('.sidebar-toggle');
+        var sidebar = document.querySelector('#sidebar');
+        var checkbox = document.querySelector('#sidebar-checkbox');
+
+        document.addEventListener('click', function(e) {
+          var target = e.target;
+
+          if(!checkbox.checked ||
+             sidebar.contains(target) ||
+             (target === checkbox || target === toggle)) return;
+
+          checkbox.checked = false;
+        }, false);
+      })(document);
+    </script>
+  </body>
+</html>
