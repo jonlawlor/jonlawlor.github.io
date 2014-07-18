@@ -10,7 +10,7 @@ title:            Relational Data Streams in Go
 description:      'Combining relational algebra with pipelines in Go.<br>C. A. R. Hoare meets E. F. Codd!'
 url:              http://jonlawlor.github.io
 baseurl:          '/'
-paginate:         5
+paginate:         2
 
 timezone:         America/New_York
 
