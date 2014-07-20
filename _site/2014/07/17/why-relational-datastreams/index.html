@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en-us">
+
+  <head>
+  <link href="http://gmpg.org/xfn/11" rel="profile">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+
+  <!-- Enable responsiveness on mobile devices-->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+
+  <title>
+    
+      When and Why to use Relational Datastreams &middot; Relational Data Streams in Go
+    
+  </title>
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="/public/css/poole.css">
+  <link rel="stylesheet" href="/public/css/syntax.css">
+  <link rel="stylesheet" href="/public/css/lanyon.css">
+  <link rel="stylesheet" href="http://fonts.googleapis.com/css?family=PT+Serif:400,400italic,700|PT+Sans:400">
+
+  <!-- Icons -->
+  <link rel="apple-touch-icon-precomposed" sizes="144x144" href="/public/apple-touch-icon-precomposed.png">
+  <link rel="shortcut icon" href="/public/favicon.ico">
+
+  <!-- RSS -->
+  <link rel="alternate" type="application/rss+xml" title="RSS" href="/atom.xml">
+</head>
+
+
+  <body>
+
+    <!-- Target for toggling the sidebar `.sidebar-checkbox` is for regular
+     styles, `#sidebar-checkbox` for behavior. -->
+<input type="checkbox" class="sidebar-checkbox" id="sidebar-checkbox">
+
+<!-- Toggleable sidebar -->
+<div class="sidebar" id="sidebar">
+  <div class="sidebar-item">
+    <p>Combining relational algebra with pipelines in Go.<br>C. A. R. Hoare meets E. F. Codd!</p>
+  </div>
+
+  <nav class="sidebar-nav">
+    <a class="sidebar-nav-item" href="/">Home</a>
+
+    
+
+    
+    
+      
+        
+      
+    
+      
+        
+          <a class="sidebar-nav-item" href="/about/">About</a>
+        
+      
+    
+      
+    
+      
+        
+      
+    
+
+  </nav>
+
+  <div class="sidebar-item">
+    <p>
+      &copy; 2014. All rights reserved.
+    </p>
+  </div>
+</div>
+
+
+    <!-- Wrap is the content to shift when toggling the sidebar. We wrap the
+         content to avoid any CSS collisions with our real content. -->
+    <div class="wrap">
+      <div class="masthead">
+        <div class="container">
+          <h3 class="masthead-title">
+            <a href="/" title="Home">Relational Data Streams in Go</a>
+            <small></small>
+          </h3>
+        </div>
+      </div>
+
+      <div class="container content">
+        <div class="post">
+  <h1 class="post-title">When and Why to use Relational Datastreams</h1>
+  <span class="post-date">17 Jul 2014</span>
+  <p>Pipelines in go are a <a href="http://blog.golang.org/pipelines">powerful idiom</a>.</p>
+
+<p>The <a href="http://en.wikipedia.org/wiki/Relational_model">relational data model</a> is an extremely effective and succinct way of manipulating large quantities of data.  It is also extremely popular: it puts the <strong>R</strong> in RDBMS and ORM.</p>
+
+<p>Combining the two yields a variety of higher level composable &quot;chunks&quot; that can be used to reliably solve problems.  Depending on how they are constructed, the pipeline stages can be tuned to different performance characteristics.</p>
+
+<p>This approach (and relational algebra) is amenable to two forms of concurrency: pipelining, where results from one query are piped to another as soon as they are available, and parallelism, where many records / tuples are being processed simultaneously.</p>
+
+<blockquote>
+<p>Why have parallel database systems become more than a research curiosity?  One explanation is the widespread adoption of the relational data model.  In 1983 relational database systems were just appearing in the marketplace; today they dominate it.  Relational queries are ideally suited to parallel execution; they consist of uniform operations applied to uniform streams of data.  Each operator produces a new relation, so the operators can be composed into highly parallel dataflow graphs.  By streaming the output of one operator into the input of another operator, the two operators can work in series giving pipelined parallelism.  By partitioning the input data among multiple processors and memories, an operator can often be split into many independent operators each working on a part of the data.  This partitioned data and execution gives pipelined parallelism.</p>
+
+<p>-- <cite>DeWitt, David, and Jim Gray. &quot;Parallel database systems: the future of high performance database systems.&quot; Communications of the ACM 35.6 (1992): 85-98.</cite></p>
+</blockquote>
+
+<p>Go&#39;s pipeline constructs match up very well, and can be applied to construct continuous queries which produce new results as soon as new data is available.</p>
+
+<p>In this blog, relational operations are represented as functions which take one or more channels of input tuples or records, and typically return one or more channels which produce output tuples.</p>
+
+<p>That representation brings with it some interesting questions, which correspond to problems in data streams.</p>
+
+<blockquote>
+<p>In this model, data does not take the form of persistent relations, but rather arrives in multiple, continuous, rapid, time-varying data streams. ... Examples of such applications include financial applications, network monitoring, security, telecommunications data management, web applications, manufacturing, sensor networks, and others.</p>
+
+<p>--<cite>Babcock, Brian, et al. &quot;Models and issues in data stream systems.&quot; Proceedings of the twenty-first ACM SIGMOD-SIGACT-SIGART symposium on Principles of database systems. ACM, 2002.</cite></p>
+</blockquote>
+
+<p>You may find that you have already been using these techniques in some of your code; in that case, these articles may provide a broader context.  None of them are intended to be a one size fits all solution.  You&#39;ll have to adapt particular implementations of the operations to your needs.  </p>
+
+<p>If you aren&#39;t familiar with relational algebra, see <a href="http://books.google.com/books?id=TR8f5dtnC9IC&amp;lpg=PP1&amp;dq=isbn%3A0596100124&amp;pg=PP1#v=onepage&amp;q&amp;f=false">Database in Depth</a> by C. J. Date for an excellent introduction.  I try to use the same terminology as that book.</p>
+
+<p>Of course, not all problems can be solved in this way, and not all of the ones that can be solved this way should be.  Data stream algorithms are often concerned with how to deal with very large (potentially unending) amounts of data that might be arriving too fast for consumption.  This gives rise to <em>sub-linear</em> algorithms, which provide approximate results instead of exact ones.  If you need an exact answer, or don&#39;t have to deal with very large data sets, these algorithms may not be appropriate.</p>
+
+</div>
+
+<div class="related">
+  <h2>Related Posts</h2>
+  <ul class="related-posts">
+    
+      <li>
+        <h3>
+          <a href="/2014/07/18/distinct/">
+            Distinct
+            <small>18 Jul 2014</small>
+          </a>
+        </h3>
+      </li>
+    
+  </ul>
+</div>
+
+    <div id="disqus_thread"></div>
+    <script type="text/javascript">
+        /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+        var disqus_shortname = 'relationaldatastructuresingo'; // required: replace example with your forum shortname
+
+        /* * * DON'T EDIT BELOW THIS LINE * * */
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+
+      </div>
+    </div>
+
+    <label for="sidebar-checkbox" class="sidebar-toggle"></label>
+
+    <script>
+      (function(document) {
+        var toggle = document.querySelector('.sidebar-toggle');
+        var sidebar = document.querySelector('#sidebar');
+        var checkbox = document.querySelector('#sidebar-checkbox');
+
+        document.addEventListener('click', function(e) {
+          var target = e.target;
+
+          if(!checkbox.checked ||
+             sidebar.contains(target) ||
+             (target === checkbox || target === toggle)) return;
+
+          checkbox.checked = false;
+        }, false);
+      })(document);
+    </script>
+  </body>
+</html>

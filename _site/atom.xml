@@ -4,7 +4,7 @@
  <title>Relational Data Streams in Go</title>
  <link href="http://jonlawlor.github.io/atom.xml" rel="self"/>
  <link href="http://jonlawlor.github.io/"/>
- <updated>2014-07-18T19:50:35-04:00</updated>
+ <updated>2014-07-20T18:53:43-04:00</updated>
  <id>http://jonlawlor.github.io</id>
  <author>
    <name>Jonathan J Lawlor</name>
@@ -236,6 +236,45 @@
 &lt;h3&gt;Conclusions&lt;/h3&gt;
 
 &lt;p&gt;Even something as simple as finding unique values in an input channel exhibits some interesting tradeoffs, and we&amp;#39;ve barely scratched the surface of data streams.  As a general rule: unsorted data streams often (but not always) require an unbounded amount of memory for exact results.  If we can impose some restrictions on how tuples will be input to a data stream operation, then we can reduce the amount of memory used dramatically, although that doesn&amp;#39;t always mean better performance.  And adding more cores doesn&amp;#39;t always result in better performance.&lt;/p&gt;
+</content>
+ </entry>
+ 
+ <entry>
+   <title>When and Why to use Relational Datastreams</title>
+   <link href="http://jonlawlor.github.io/2014/07/17/why-relational-datastreams/"/>
+   <updated>2014-07-17T00:00:00-04:00</updated>
+   <id>http://jonlawlor.github.io/2014/07/17/why-relational-datastreams</id>
+   <content type="html">&lt;p&gt;Pipelines in go are a &lt;a href=&quot;http://blog.golang.org/pipelines&quot;&gt;powerful idiom&lt;/a&gt;.&lt;/p&gt;
+
+&lt;p&gt;The &lt;a href=&quot;http://en.wikipedia.org/wiki/Relational_model&quot;&gt;relational data model&lt;/a&gt; is an extremely effective and succinct way of manipulating large quantities of data.  It is also extremely popular: it puts the &lt;strong&gt;R&lt;/strong&gt; in RDBMS and ORM.&lt;/p&gt;
+
+&lt;p&gt;Combining the two yields a variety of higher level composable &amp;quot;chunks&amp;quot; that can be used to reliably solve problems.  Depending on how they are constructed, the pipeline stages can be tuned to different performance characteristics.&lt;/p&gt;
+
+&lt;p&gt;This approach (and relational algebra) is amenable to two forms of concurrency: pipelining, where results from one query are piped to another as soon as they are available, and parallelism, where many records / tuples are being processed simultaneously.&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;Why have parallel database systems become more than a research curiosity?  One explanation is the widespread adoption of the relational data model.  In 1983 relational database systems were just appearing in the marketplace; today they dominate it.  Relational queries are ideally suited to parallel execution; they consist of uniform operations applied to uniform streams of data.  Each operator produces a new relation, so the operators can be composed into highly parallel dataflow graphs.  By streaming the output of one operator into the input of another operator, the two operators can work in series giving pipelined parallelism.  By partitioning the input data among multiple processors and memories, an operator can often be split into many independent operators each working on a part of the data.  This partitioned data and execution gives pipelined parallelism.&lt;/p&gt;
+
+&lt;p&gt;-- &lt;cite&gt;DeWitt, David, and Jim Gray. &amp;quot;Parallel database systems: the future of high performance database systems.&amp;quot; Communications of the ACM 35.6 (1992): 85-98.&lt;/cite&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;Go&amp;#39;s pipeline constructs match up very well, and can be applied to construct continuous queries which produce new results as soon as new data is available.&lt;/p&gt;
+
+&lt;p&gt;In this blog, relational operations are represented as functions which take one or more channels of input tuples or records, and typically return one or more channels which produce output tuples.&lt;/p&gt;
+
+&lt;p&gt;That representation brings with it some interesting questions, which correspond to problems in data streams.&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;In this model, data does not take the form of persistent relations, but rather arrives in multiple, continuous, rapid, time-varying data streams. ... Examples of such applications include financial applications, network monitoring, security, telecommunications data management, web applications, manufacturing, sensor networks, and others.&lt;/p&gt;
+
+&lt;p&gt;--&lt;cite&gt;Babcock, Brian, et al. &amp;quot;Models and issues in data stream systems.&amp;quot; Proceedings of the twenty-first ACM SIGMOD-SIGACT-SIGART symposium on Principles of database systems. ACM, 2002.&lt;/cite&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;You may find that you have already been using these techniques in some of your code; in that case, these articles may provide a broader context.  None of them are intended to be a one size fits all solution.  You&amp;#39;ll have to adapt particular implementations of the operations to your needs.  &lt;/p&gt;
+
+&lt;p&gt;If you aren&amp;#39;t familiar with relational algebra, see &lt;a href=&quot;http://books.google.com/books?id=TR8f5dtnC9IC&amp;amp;lpg=PP1&amp;amp;dq=isbn%3A0596100124&amp;amp;pg=PP1#v=onepage&amp;amp;q&amp;amp;f=false&quot;&gt;Database in Depth&lt;/a&gt; by C. J. Date for an excellent introduction.  I try to use the same terminology as that book.&lt;/p&gt;
+
+&lt;p&gt;Of course, not all problems can be solved in this way, and not all of the ones that can be solved this way should be.  Data stream algorithms are often concerned with how to deal with very large (potentially unending) amounts of data that might be arriving too fast for consumption.  This gives rise to &lt;em&gt;sub-linear&lt;/em&gt; algorithms, which provide approximate results instead of exact ones.  If you need an exact answer, or don&amp;#39;t have to deal with very large data sets, these algorithms may not be appropriate.&lt;/p&gt;
 </content>
  </entry>
  

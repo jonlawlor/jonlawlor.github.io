@@ -322,6 +322,49 @@
 
   </div>
   
+  <div class="post">
+    <h1 class="post-title">
+      <a href="/2014/07/17/why-relational-datastreams/">
+        When and Why to use Relational Datastreams
+      </a>
+    </h1>
+
+    <span class="post-date">17 Jul 2014</span>
+
+    <p>Pipelines in go are a <a href="http://blog.golang.org/pipelines">powerful idiom</a>.</p>
+
+<p>The <a href="http://en.wikipedia.org/wiki/Relational_model">relational data model</a> is an extremely effective and succinct way of manipulating large quantities of data.  It is also extremely popular: it puts the <strong>R</strong> in RDBMS and ORM.</p>
+
+<p>Combining the two yields a variety of higher level composable &quot;chunks&quot; that can be used to reliably solve problems.  Depending on how they are constructed, the pipeline stages can be tuned to different performance characteristics.</p>
+
+<p>This approach (and relational algebra) is amenable to two forms of concurrency: pipelining, where results from one query are piped to another as soon as they are available, and parallelism, where many records / tuples are being processed simultaneously.</p>
+
+<blockquote>
+<p>Why have parallel database systems become more than a research curiosity?  One explanation is the widespread adoption of the relational data model.  In 1983 relational database systems were just appearing in the marketplace; today they dominate it.  Relational queries are ideally suited to parallel execution; they consist of uniform operations applied to uniform streams of data.  Each operator produces a new relation, so the operators can be composed into highly parallel dataflow graphs.  By streaming the output of one operator into the input of another operator, the two operators can work in series giving pipelined parallelism.  By partitioning the input data among multiple processors and memories, an operator can often be split into many independent operators each working on a part of the data.  This partitioned data and execution gives pipelined parallelism.</p>
+
+<p>-- <cite>DeWitt, David, and Jim Gray. &quot;Parallel database systems: the future of high performance database systems.&quot; Communications of the ACM 35.6 (1992): 85-98.</cite></p>
+</blockquote>
+
+<p>Go&#39;s pipeline constructs match up very well, and can be applied to construct continuous queries which produce new results as soon as new data is available.</p>
+
+<p>In this blog, relational operations are represented as functions which take one or more channels of input tuples or records, and typically return one or more channels which produce output tuples.</p>
+
+<p>That representation brings with it some interesting questions, which correspond to problems in data streams.</p>
+
+<blockquote>
+<p>In this model, data does not take the form of persistent relations, but rather arrives in multiple, continuous, rapid, time-varying data streams. ... Examples of such applications include financial applications, network monitoring, security, telecommunications data management, web applications, manufacturing, sensor networks, and others.</p>
+
+<p>--<cite>Babcock, Brian, et al. &quot;Models and issues in data stream systems.&quot; Proceedings of the twenty-first ACM SIGMOD-SIGACT-SIGART symposium on Principles of database systems. ACM, 2002.</cite></p>
+</blockquote>
+
+<p>You may find that you have already been using these techniques in some of your code; in that case, these articles may provide a broader context.  None of them are intended to be a one size fits all solution.  You&#39;ll have to adapt particular implementations of the operations to your needs.  </p>
+
+<p>If you aren&#39;t familiar with relational algebra, see <a href="http://books.google.com/books?id=TR8f5dtnC9IC&amp;lpg=PP1&amp;dq=isbn%3A0596100124&amp;pg=PP1#v=onepage&amp;q&amp;f=false">Database in Depth</a> by C. J. Date for an excellent introduction.  I try to use the same terminology as that book.</p>
+
+<p>Of course, not all problems can be solved in this way, and not all of the ones that can be solved this way should be.  Data stream algorithms are often concerned with how to deal with very large (potentially unending) amounts of data that might be arriving too fast for consumption.  This gives rise to <em>sub-linear</em> algorithms, which provide approximate results instead of exact ones.  If you need an exact answer, or don&#39;t have to deal with very large data sets, these algorithms may not be appropriate.</p>
+
+  </div>
+  
 </div>
 
 <div class="pagination">
