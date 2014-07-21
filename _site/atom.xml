@@ -4,7 +4,7 @@
  <title>Relational Data Streams in Go</title>
  <link href="http://jonlawlor.github.io/atom.xml" rel="self"/>
  <link href="http://jonlawlor.github.io/"/>
- <updated>2014-07-20T21:11:46-04:00</updated>
+ <updated>2014-07-21T19:28:03-04:00</updated>
  <id>http://jonlawlor.github.io</id>
  <author>
    <name>Jonathan J Lawlor</name>
@@ -299,6 +299,10 @@
 &lt;p&gt;Even something as simple as finding unique values in an input channel exhibits some interesting tradeoffs, and we&amp;#39;ve barely scratched the surface of data streams.  As a general rule: unsorted data streams often (but not always) require an unbounded amount of memory for exact results.  If we can impose some restrictions on how tuples will be input to a data stream operation, then we can reduce the amount of memory used dramatically, although that doesn&amp;#39;t always mean better performance.  And adding more cores doesn&amp;#39;t always result in better performance.&lt;/p&gt;
 
 &lt;p&gt;We&amp;#39;ll probably be revisiting these algorithms later, using the unsafe package.  If you have suggestions as to better implementations (or implementations that are better in some situations), I&amp;#39;ll try to either update this post, or add them to the followup.&lt;/p&gt;
+
+&lt;h3&gt;Thanks&lt;/h3&gt;
+
+&lt;p&gt;Egon Elbre helped review and provided a revised version of the unordered distinct operation.  He also gave an implementation using the unsafe package, which was too advanced for this post.&lt;/p&gt;
 </content>
  </entry>
  
