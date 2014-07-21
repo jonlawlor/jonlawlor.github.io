@@ -4,7 +4,7 @@
  <title>Relational Data Streams in Go</title>
  <link href="http://jonlawlor.github.io/atom.xml" rel="self"/>
  <link href="http://jonlawlor.github.io/"/>
- <updated>2014-07-20T18:53:43-04:00</updated>
+ <updated>2014-07-20T21:02:13-04:00</updated>
  <id>http://jonlawlor.github.io</id>
  <author>
    <name>Jonathan J Lawlor</name>
@@ -37,15 +37,182 @@
     &lt;span class=&quot;nx&quot;&gt;bar&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt;
 &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 
+&lt;h3&gt;Simple Implementation&lt;/h3&gt;
+
 &lt;script src=&quot;https://gist.github.com/jonlawlor/7e6b351f9df6338527d7.js&quot;&gt; &lt;/script&gt;
 
 &lt;p&gt;There are a few things to notice about that distinct function.  When the inner, anonymous function terminates the &lt;code&gt;mem[tuple]struct{}{}&lt;/code&gt; will have every tuple that it has ever sent still in it, which could be a problem.  Also, it can&amp;#39;t be run in parallel between the same input and results channels, because then there would be two maps, and they would race to get and send values, which would cause duplicates.  On the plus side, it is quite succinct.&lt;/p&gt;
 
-&lt;p&gt;So let&amp;#39;s deal with the issue with parallelism first.  One response might be to just run the inner goroutine in parallel, but it will share a map, and &lt;a href=&quot;http://golang.org/doc/faq#atomic_maps&quot;&gt;maps are not concurrent&lt;/a&gt;.  We can fix that with a &lt;a href=&quot;http://golang.org/pkg/sync/#Mutex&quot;&gt;sync.Mutex&lt;/a&gt; to the mem.  In addition, if we have several goroutines handling the result channel, they have to coordinate closing that channel.  We can fix that with a &lt;a href=&quot;http://golang.org/pkg/sync/#WaitGroup&quot;&gt;sync.WaitGroup&lt;/a&gt; and &lt;em&gt;another&lt;/em&gt; goroutine.  In this case I&amp;#39;ve decided to include an input argument &lt;code&gt;n&lt;/code&gt; which tells it how many goroutines should operate concurrently.&lt;/p&gt;
+&lt;h3&gt;Simple Performance&lt;/h3&gt;
+
+&lt;p&gt;I&amp;#39;ve implemented some simple test helping functions to generate example channels of tuples, that are used for benchmarking.  The code is found in my &lt;a href=&quot;https://github.com/jonlawlor/relpipes&quot;&gt;relpipes&lt;/a&gt; package.  The computer used for testing is a Macbook with a 2.13 GHz Intel Core 2 Duo and 4 GB of RAM.&lt;/p&gt;
+
+&lt;p&gt;The following table compares the amount of time it takes to perform the first &lt;code&gt;distinct&lt;/code&gt; implementation on varying sizes of inputs.  Because the performance depends on both the number of input tuples and the number of unique tuples, I tried a variety of different combinations.  The leftmost column gives the number of tuples sent to the distinct function, and the other columns measure how long it took to perform distinct, given that it has (as many as, not exactly) some number of unique tuples.  All times are in ns / operation.&lt;/p&gt;
+
+&lt;table&gt;
+    &lt;thead&gt;
+        &lt;tr align=&quot;right&quot;&gt;
+            &lt;th&gt;Tuples&lt;/th&gt;
+            &lt;th&gt;3 Unique&lt;/th&gt;
+            &lt;th&gt;1,000 Unique&lt;/th&gt;
+            &lt;th&gt;100,000 Unique&lt;/th&gt;
+        &lt;/tr&gt;
+    &lt;/thead&gt;
+    &lt;tbody&gt;
+&lt;tr align=&quot;right&quot;&gt;
+    &lt;td&gt;10&lt;/td&gt; &lt;td&gt;11,418&lt;/td&gt; &lt;td&gt;16,639&lt;/td&gt; &lt;td&gt;16,669&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr align=&quot;right&quot;&gt;
+    &lt;td&gt;100&lt;/td&gt;    &lt;td&gt;76,272&lt;/td&gt; &lt;td&gt;147,966&lt;/td&gt;    &lt;td&gt;149,888&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr align=&quot;right&quot;&gt;
+    &lt;td&gt;1000&lt;/td&gt;   &lt;td&gt;717,874&lt;/td&gt;    &lt;td&gt;1,268,456&lt;/td&gt;  &lt;td&gt;1,579,900&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr align=&quot;right&quot;&gt;
+    &lt;td&gt;10,000&lt;/td&gt; &lt;td&gt;7,211,543&lt;/td&gt;  &lt;td&gt;8,190,355&lt;/td&gt;  &lt;td&gt;15,097,732&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr align=&quot;right&quot;&gt;
+    &lt;td&gt;100,000&lt;/td&gt;    &lt;td&gt;71,962,786&lt;/td&gt; &lt;td&gt;73,765,912&lt;/td&gt; &lt;td&gt;130,224,777&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr align=&quot;right&quot;&gt;
+    &lt;td&gt;1,000,000&lt;/td&gt;  &lt;td&gt;724,689,732&lt;/td&gt;    &lt;td&gt;730,728,605&lt;/td&gt;    &lt;td&gt;854,284,016&lt;/td&gt;
+&lt;/tr&gt;
+    &lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;p&gt;As you can see, the time it takes grows proportionally to the number of input tuples, and depending on the number of unique values, there is an additional overhead.  I believe that is because the implementation hashes twice when a new tuple is added to the map, while a duplicate value only has a single comparison to make.&lt;/p&gt;
+
+&lt;p&gt;In this next table, I&amp;#39;ve divided the ns/op by the number of tuples, to get a sense for the per-tuple overhead.  Otherwise the rows and columns have the same meaning.  Units are ns/tuple input.
+&lt;table&gt;
+    &lt;thead&gt;
+        &lt;tr align=&quot;right&quot;&gt;
+            &lt;th&gt;Tuples&lt;/th&gt;
+            &lt;th&gt;3 Unique&lt;/th&gt;
+            &lt;th&gt;1,000 Unique&lt;/th&gt;
+            &lt;th&gt;100,000 Unique&lt;/th&gt;
+        &lt;/tr&gt;
+    &lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;10&lt;/td&gt; &lt;td&gt;1,142&lt;/td&gt; &lt;td&gt;1,664&lt;/td&gt; &lt;td&gt;1,667&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;100&lt;/td&gt; &lt;td&gt;763&lt;/td&gt; &lt;td&gt;1,480&lt;/td&gt; &lt;td&gt;1,499&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;1,000&lt;/td&gt; &lt;td&gt;718&lt;/td&gt; &lt;td&gt;1,268&lt;/td&gt; &lt;td&gt;1,580&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;10,000&lt;/td&gt; &lt;td&gt;721&lt;/td&gt; &lt;td&gt;819&lt;/td&gt; &lt;td&gt;1,510&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;100,000&lt;/td&gt; &lt;td&gt;720&lt;/td&gt; &lt;td&gt;738&lt;/td&gt; &lt;td&gt;1,302&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;1,000,000&lt;/td&gt; &lt;td&gt;725&lt;/td&gt; &lt;td&gt;731&lt;/td&gt; &lt;td&gt;854&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;&lt;/p&gt;
+
+&lt;p&gt;It looks like the implementation takes about twice as long (1600 ns / tuple) when tuples are new, and about 800 ns / tuple otherwise.  This translates to somewhere in the range of 600k - 1.2M tuples / second.  If the channel which sends tuples to this function produced more than that rate, this function would fall behind.  There are some methods to deal with that (beyond faster hardware &amp;amp; better performance) that we will get into in a later blog post.&lt;/p&gt;
+
+&lt;h3&gt;Parallel Implementation&lt;/h3&gt;
+
+&lt;p&gt;So let&amp;#39;s take a stab at parallelism.  One response might be to just run the inner goroutine in parallel, but it will share a map, and &lt;a href=&quot;http://golang.org/doc/faq#atomic_maps&quot;&gt;maps are not concurrent&lt;/a&gt;.  We can fix that with a &lt;a href=&quot;http://golang.org/pkg/sync/#Mutex&quot;&gt;sync.Mutex&lt;/a&gt; to the mem.  In addition, if we have several goroutines handling the result channel, they have to coordinate closing that channel.  We can fix that with a &lt;a href=&quot;http://golang.org/pkg/sync/#WaitGroup&quot;&gt;sync.WaitGroup&lt;/a&gt; and &lt;em&gt;another&lt;/em&gt; goroutine.  In this case I&amp;#39;ve decided to include an input argument &lt;code&gt;n&lt;/code&gt; which tells it how many goroutines should operate concurrently.&lt;/p&gt;
 
 &lt;script src=&quot;https://gist.github.com/jonlawlor/c397499881da24fbf49d.js&quot;&gt; &lt;/script&gt;
 
 &lt;p&gt;Now, when the input n to the parallel distinct function is &amp;gt; 1, there will be several goroutines all pulling tuples from the input, and sending them to the output.  However, it seems like the process doesn&amp;#39;t gain much because the map has to be shared.&lt;/p&gt;
+
+&lt;h3&gt;Parallel Performance&lt;/h3&gt;
+
+&lt;p&gt;So, how does the parallel version perform?  I set GOMAXPROCs to 2, and performed the same tests as above (units are ns/tuple input):&lt;/p&gt;
+
+&lt;table&gt;
+    &lt;thead&gt;
+        &lt;tr align=&quot;right&quot;&gt;
+            &lt;th&gt;Tuples&lt;/th&gt;
+            &lt;th&gt;3 Unique&lt;/th&gt;
+            &lt;th&gt;1,000 Unique&lt;/th&gt;
+            &lt;th&gt;100,000 Unique&lt;/th&gt;
+        &lt;/tr&gt;
+    &lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;10&lt;/td&gt; &lt;td&gt;28,669&lt;/td&gt; &lt;td&gt;33,234&lt;/td&gt; &lt;td&gt;33,060&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;100&lt;/td&gt;    &lt;td&gt;215,048&lt;/td&gt;    &lt;td&gt;212,194&lt;/td&gt;    &lt;td&gt;222,439&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;1,000&lt;/td&gt;  &lt;td&gt;2,137,649&lt;/td&gt;  &lt;td&gt;2,259,830&lt;/td&gt;  &lt;td&gt;1,857,265&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;10,000&lt;/td&gt; &lt;td&gt;21,900,233&lt;/td&gt; &lt;td&gt;21,814,935&lt;/td&gt; &lt;td&gt;17,800,176&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;100,000&lt;/td&gt;    &lt;td&gt;177,486,647&lt;/td&gt;    &lt;td&gt;179,204,410&lt;/td&gt;    &lt;td&gt;233,804,969&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;1,000,000&lt;/td&gt;  &lt;td&gt;1,713,882,948&lt;/td&gt;  &lt;td&gt;1,830,978,407&lt;/td&gt;  &lt;td&gt;2,449,220,450&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;p&gt;Well, crap.  It is slower, by about a factor of 2.5x!  The fact that performance has degraded is a very strong suggestion that the locking is adding more overhead, without a corresponding performance boost.  Not all problems benefit from parallelism.  I&amp;#39;m not going to bother showing the per-tuple performance.  On a side note, setting GOMAXPROCS to 2 is actually slightly slower than the default of 1.&lt;/p&gt;
+
+&lt;h3&gt;Parallel Implementation, Revised&lt;/h3&gt;
+
+&lt;p&gt;Instead of managing concurrent access to a map, we can split up the input to use different maps depending on the attributes of the input tuples, by using a fast modulo operator.&lt;/p&gt;
+
+&lt;p&gt;For tests, I used:&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;go&quot;&gt;&lt;span class=&quot;c1&quot;&gt;// Mod takes an input tuple and returns an int in&lt;/span&gt;
+&lt;span class=&quot;c1&quot;&gt;// [0, n).  Ideally it will be uniformly distributed.&lt;/span&gt;
+&lt;span class=&quot;kd&quot;&gt;func&lt;/span&gt; &lt;span class=&quot;nx&quot;&gt;Mod&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nx&quot;&gt;v&lt;/span&gt; &lt;span class=&quot;nx&quot;&gt;tuple&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nx&quot;&gt;n&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;nx&quot;&gt;v&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nx&quot;&gt;foo&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;%&lt;/span&gt; &lt;span class=&quot;nx&quot;&gt;n&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;To modulo using a string, you may want to use &lt;a href=&quot;http://golang.org/pkg/hash/crc32/&quot;&gt;hash/crc32&lt;/a&gt; first, which is implemented in hardware on &lt;a href=&quot;http://golang.org/src/pkg/hash/crc32/crc32_amd64x.go&quot;&gt;amd64 architecture&lt;/a&gt;.  I haven&amp;#39;t tested its performance, though.&lt;/p&gt;
+
+&lt;script src=&quot;https://gist.github.com/jonlawlor/7da394434eb7240710b6.js&quot;&gt; &lt;/script&gt;
+
+&lt;h3&gt;Revised Parallel Performance&lt;/h3&gt;
+
+&lt;table&gt;
+    &lt;thead&gt;
+        &lt;tr align=&quot;right&quot;&gt;
+            &lt;th&gt;Tuples&lt;/th&gt;
+            &lt;th&gt;3 Unique&lt;/th&gt;
+            &lt;th&gt;1,000 Unique&lt;/th&gt;
+            &lt;th&gt;100,000 Unique&lt;/th&gt;
+        &lt;/tr&gt;
+    &lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;10&lt;/td&gt; &lt;td&gt;30,443&lt;/td&gt; &lt;td&gt;35,229&lt;/td&gt; &lt;td&gt;30,068&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;100&lt;/td&gt;    &lt;td&gt;169,240&lt;/td&gt;    &lt;td&gt;208,973&lt;/td&gt;    &lt;td&gt;196,924&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;1,000&lt;/td&gt;  &lt;td&gt;1,442,566&lt;/td&gt;  &lt;td&gt;1,466,887&lt;/td&gt;  &lt;td&gt;1,624,803&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;10,000&lt;/td&gt; &lt;td&gt;14,243,882&lt;/td&gt; &lt;td&gt;14,492,360&lt;/td&gt; &lt;td&gt;21,312,597&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;100,000&lt;/td&gt;    &lt;td&gt;143,051,464&lt;/td&gt;    &lt;td&gt;141,408,320&lt;/td&gt;    &lt;td&gt;192,644,214&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;1,000,000&lt;/td&gt;  &lt;td&gt;1,425,506,632&lt;/td&gt;  &lt;td&gt;1,394,233,550&lt;/td&gt;  &lt;td&gt;1,447,067,496&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;p&gt;The revised implementation has better performance than the original one, but it still isn&amp;#39;t as fast as the non-concurrent version.  It might scale better with different hardware and different tuple types though.&lt;/p&gt;
+
+&lt;h3&gt;Ordered Implementation&lt;/h3&gt;
 
 &lt;p&gt;If we are willing to make some restrictions on how the input channel&amp;#39;s data is ordered, then we can avoid using the map altogether.  Instead, we can just compare each input tuple with the previously sent result tuple, and if it is equal to it, then we discard it.&lt;/p&gt;
 
@@ -53,143 +220,37 @@
 
 &lt;p&gt;This has a big advantage over the first two in terms of memory use.  Also, it returns an ordered output.  However, it can&amp;#39;t be used for unordered inputs.  Knowing the characteristics of the input makes a big difference in terms of memory, and as we will see, it also makes it faster.&lt;/p&gt;
 
-&lt;h3&gt;Performance&lt;/h3&gt;
+&lt;h3&gt;Ordered Performance&lt;/h3&gt;
 
-&lt;p&gt;Now on to lots of tables!  I&amp;#39;ve implemented some simple test helping functions to generate example channels of tuples, that are used for benchmarking.  The code is found in my &lt;a href=&quot;https://github.com/jonlawlor/relpipes&quot;&gt;relpipes&lt;/a&gt; package.  The computer used for testing is a Macbook with a 2.13 GHz Intel Core 2 Duo and 4 GB of RAM.&lt;/p&gt;
-
-&lt;p&gt;The following table compares the amount of time it takes to perform the first &lt;code&gt;distinct&lt;/code&gt; implementation on varying sizes of inputs.  Because the performance depends on both the number of input tuples and the number of unique tuples, I tried a variety of different combinations.  The leftmost column gives the number of tuples sent to the distinct function, and the other columns measure how long it took to perform distinct, given that it has (as many as, not exactly) some number of unique tuples.  All times are in ns / operation.&lt;/p&gt;
-
-&lt;table&gt;
-  &lt;thead&gt;
-    &lt;tr&gt;
-      &lt;th&gt;Tuples&lt;/th&gt;
-      &lt;th&gt;3 Unique&lt;/th&gt;
-      &lt;th&gt;1000 Unique&lt;/th&gt;
-      &lt;th&gt;100000 Unique&lt;/th&gt;
-    &lt;/tr&gt;
-  &lt;/thead&gt;
-  &lt;tbody&gt;
-&lt;tr&gt;
-  &lt;td&gt;10&lt;/td&gt;   &lt;td&gt;11418&lt;/td&gt;  &lt;td&gt;16639&lt;/td&gt;  &lt;td&gt;16669&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-  &lt;td&gt;100&lt;/td&gt;  &lt;td&gt;76272&lt;/td&gt;  &lt;td&gt;147966&lt;/td&gt; &lt;td&gt;149888&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-  &lt;td&gt;1000&lt;/td&gt; &lt;td&gt;717874&lt;/td&gt; &lt;td&gt;1268456&lt;/td&gt;    &lt;td&gt;1579900&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-  &lt;td&gt;10000&lt;/td&gt;    &lt;td&gt;7211543&lt;/td&gt;    &lt;td&gt;8190355&lt;/td&gt;    &lt;td&gt;15097732&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-  &lt;td&gt;100000&lt;/td&gt;   &lt;td&gt;71962786&lt;/td&gt;   &lt;td&gt;73765912&lt;/td&gt;   &lt;td&gt;130224777&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-  &lt;td&gt;1000000&lt;/td&gt;  &lt;td&gt;724689732&lt;/td&gt;  &lt;td&gt;730728605&lt;/td&gt;  &lt;td&gt;854284016&lt;/td&gt;
-&lt;/tr&gt;
-  &lt;/tbody&gt;
-&lt;/table&gt;
-
-&lt;p&gt;As you can see, the time it takes grows proportionally to the number of input tuples, and depending on the number of unique values, there is an additional overhead.  I believe that is because the implementation hashes twice when a new tuple is added to the map, while a duplicate value only has a single comparison to make.&lt;/p&gt;
-
-&lt;p&gt;In this next table, I&amp;#39;ve divided the ns/op by the number of tuples, to get a sense for the per-tuple overhead.  Otherwise the rows and columns have the same meaning.  Units are ns/tuple input.
-&lt;table&gt;
-  &lt;thead&gt;
-    &lt;tr&gt;
-      &lt;th&gt;Tuples&lt;/th&gt;
-      &lt;th&gt;3 Unique&lt;/th&gt;
-      &lt;th&gt;1000 Unique&lt;/th&gt;
-      &lt;th&gt;100000 Unique&lt;/th&gt;
-    &lt;/tr&gt;
-  &lt;/thead&gt;
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;10&lt;/td&gt; &lt;td&gt;1142&lt;/td&gt; &lt;td&gt;1664&lt;/td&gt; &lt;td&gt;1667&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;100&lt;/td&gt; &lt;td&gt;763&lt;/td&gt; &lt;td&gt;1480&lt;/td&gt; &lt;td&gt;1499&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;1000&lt;/td&gt; &lt;td&gt;718&lt;/td&gt; &lt;td&gt;1268&lt;/td&gt; &lt;td&gt;1580&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;10000&lt;/td&gt; &lt;td&gt;721&lt;/td&gt; &lt;td&gt;819&lt;/td&gt; &lt;td&gt;1510&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;100000&lt;/td&gt; &lt;td&gt;720&lt;/td&gt; &lt;td&gt;738&lt;/td&gt; &lt;td&gt;1302&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;1000000&lt;/td&gt; &lt;td&gt;725&lt;/td&gt; &lt;td&gt;731&lt;/td&gt; &lt;td&gt;854&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;&lt;/p&gt;
-
-&lt;p&gt;It looks like the implementation takes about twice as long (1600 ns / tuple) when tuples are new, and about 800 ns / tuple otherwise.  This translates to somewhere in the range of 600k - 1.2M tuples / second.  If the channel which sends tuples to this function produced more than that rate, this function would fall behind.  There are some methods to deal with that (beyond faster hardware &amp;amp; better performance) that we will get into in a later blog post.&lt;/p&gt;
-
-&lt;p&gt;So, how does the parallel version perform?  I set GOMAXPROCs to 2, and performed the same tests as above (units are ns/tuple input):&lt;/p&gt;
+&lt;p&gt;I haven&amp;#39;t benchmarked the memory usage of the previous two, but by inspection we can see that the memory usage will grow with the number of unique tuples, without bound.  The ordered program has constant memory usage.  Here is its performance (ns/op):&lt;/p&gt;
 
 &lt;table&gt;
     &lt;thead&gt;
-        &lt;tr&gt;
+        &lt;tr align=&quot;right&quot;&gt;
             &lt;th&gt;Tuples&lt;/th&gt;
             &lt;th&gt;3 Unique&lt;/th&gt;
-            &lt;th&gt;1000 Unique&lt;/th&gt;
-            &lt;th&gt;100000 Unique&lt;/th&gt;
+            &lt;th&gt;1,000 Unique&lt;/th&gt;
+            &lt;th&gt;100,000 Unique&lt;/th&gt;
         &lt;/tr&gt;
     &lt;/thead&gt;
 &lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;10&lt;/td&gt; &lt;td&gt;28669&lt;/td&gt;  &lt;td&gt;33234&lt;/td&gt;  &lt;td&gt;33060&lt;/td&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;10&lt;/td&gt; &lt;td&gt;11,941&lt;/td&gt; &lt;td&gt;13,041&lt;/td&gt; &lt;td&gt;12,791&lt;/td&gt;
 &lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;100&lt;/td&gt;    &lt;td&gt;215048&lt;/td&gt; &lt;td&gt;212194&lt;/td&gt; &lt;td&gt;222439&lt;/td&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;100&lt;/td&gt;    &lt;td&gt;89,945&lt;/td&gt; &lt;td&gt;101,685&lt;/td&gt;    &lt;td&gt;101,925&lt;/td&gt;
 &lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;1000&lt;/td&gt;   &lt;td&gt;2137649&lt;/td&gt;    &lt;td&gt;2259830&lt;/td&gt;    &lt;td&gt;1857265&lt;/td&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;1,000&lt;/td&gt;  &lt;td&gt;908,702&lt;/td&gt;    &lt;td&gt;996,094&lt;/td&gt;    &lt;td&gt;995,019&lt;/td&gt;
 &lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;10000&lt;/td&gt;  &lt;td&gt;21900233&lt;/td&gt;   &lt;td&gt;21814935&lt;/td&gt;   &lt;td&gt;17800176&lt;/td&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;10,000&lt;/td&gt; &lt;td&gt;8,780,944&lt;/td&gt;  &lt;td&gt;10,039,774&lt;/td&gt; &lt;td&gt;10,078,654&lt;/td&gt;
 &lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;100000&lt;/td&gt; &lt;td&gt;177486647&lt;/td&gt;  &lt;td&gt;179204410&lt;/td&gt;  &lt;td&gt;233804969&lt;/td&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;100,000&lt;/td&gt;    &lt;td&gt;88,551,917&lt;/td&gt; &lt;td&gt;101,807,795&lt;/td&gt;    &lt;td&gt;101,829,774&lt;/td&gt;
 &lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;1000000&lt;/td&gt;    &lt;td&gt;1713882948&lt;/td&gt; &lt;td&gt;1830978407&lt;/td&gt; &lt;td&gt;2449220450&lt;/td&gt;
-&lt;/tr&gt;
-&lt;/tbody&gt;
-&lt;/table&gt;
-
-&lt;p&gt;Well, crap.  It is slower, by about a factor of 2.5x!  The fact that performance has degraded is a very strong suggestion that the locking is adding more overhead, without a corresponding performance boost.  Not all problems benefit from parallelism.  I&amp;#39;m not going to bother showing the per-tuple performance.&lt;/p&gt;
-
-&lt;p&gt;Instead, let&amp;#39;s examine the performance of the ordered distinct operation.  I haven&amp;#39;t benchmarked the memory usage of the previous two, but by inspection we can see that the memory usage will grow with the number of unique tuples, without bound.  The ordered program has constant memory usage.  Here is its performance (ns/op):&lt;/p&gt;
-
-&lt;table&gt;
-    &lt;thead&gt;
-        &lt;tr&gt;
-            &lt;th&gt;Tuples&lt;/th&gt;
-            &lt;th&gt;3 Unique&lt;/th&gt;
-            &lt;th&gt;1000 Unique&lt;/th&gt;
-            &lt;th&gt;100000 Unique&lt;/th&gt;
-        &lt;/tr&gt;
-    &lt;/thead&gt;
-&lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;10&lt;/td&gt; &lt;td&gt;11941&lt;/td&gt;  &lt;td&gt;13041&lt;/td&gt;  &lt;td&gt;12791&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;100&lt;/td&gt;    &lt;td&gt;89945&lt;/td&gt;  &lt;td&gt;101685&lt;/td&gt; &lt;td&gt;101925&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;1000&lt;/td&gt;   &lt;td&gt;908702&lt;/td&gt; &lt;td&gt;996094&lt;/td&gt; &lt;td&gt;995019&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;10000&lt;/td&gt;  &lt;td&gt;8780944&lt;/td&gt;    &lt;td&gt;10039774&lt;/td&gt;   &lt;td&gt;10078654&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;100000&lt;/td&gt; &lt;td&gt;88551917&lt;/td&gt;   &lt;td&gt;101807795&lt;/td&gt;  &lt;td&gt;101829774&lt;/td&gt;
-&lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;1000000&lt;/td&gt;    &lt;td&gt;884714522&lt;/td&gt;  &lt;td&gt;1022781810&lt;/td&gt; &lt;td&gt;1015324417&lt;/td&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;1,000,000&lt;/td&gt;  &lt;td&gt;884,714,522&lt;/td&gt;    &lt;td&gt;1,022,781,810&lt;/td&gt;  &lt;td&gt;1,015,324,417&lt;/td&gt;
 &lt;/tr&gt;
 &lt;/tbody&gt;
 &lt;/table&gt;
@@ -200,31 +261,31 @@
 
 &lt;table&gt;
     &lt;thead&gt;
-        &lt;tr&gt;
+        &lt;tr align=&quot;right&quot;&gt;
             &lt;th&gt;Tuples&lt;/th&gt;
             &lt;th&gt;3 Unique&lt;/th&gt;
-            &lt;th&gt;1000 Unique&lt;/th&gt;
-            &lt;th&gt;100000 Unique&lt;/th&gt;
+            &lt;th&gt;1,000 Unique&lt;/th&gt;
+            &lt;th&gt;100,000 Unique&lt;/th&gt;
         &lt;/tr&gt;
     &lt;/thead&gt;
 &lt;tbody&gt;
-&lt;tr&gt;
-&lt;td&gt;10&lt;/td&gt; &lt;td&gt;1194&lt;/td&gt;   &lt;td&gt;1304&lt;/td&gt;   &lt;td&gt;1279&lt;/td&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;10&lt;/td&gt; &lt;td&gt;1,194&lt;/td&gt;  &lt;td&gt;1,304&lt;/td&gt;  &lt;td&gt;1,279&lt;/td&gt;
 &lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;100&lt;/td&gt;    &lt;td&gt;899&lt;/td&gt;    &lt;td&gt;1017&lt;/td&gt;   &lt;td&gt;1019&lt;/td&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;100&lt;/td&gt;    &lt;td&gt;899&lt;/td&gt;    &lt;td&gt;1,017&lt;/td&gt;  &lt;td&gt;1,019&lt;/td&gt;
 &lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;1000&lt;/td&gt;   &lt;td&gt;909&lt;/td&gt;    &lt;td&gt;996&lt;/td&gt;    &lt;td&gt;995&lt;/td&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;1,000&lt;/td&gt;  &lt;td&gt;909&lt;/td&gt;    &lt;td&gt;996&lt;/td&gt;    &lt;td&gt;995&lt;/td&gt;
 &lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;10000&lt;/td&gt;  &lt;td&gt;878&lt;/td&gt;    &lt;td&gt;1004&lt;/td&gt;   &lt;td&gt;1008&lt;/td&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;10,000&lt;/td&gt; &lt;td&gt;878&lt;/td&gt;    &lt;td&gt;1,004&lt;/td&gt;  &lt;td&gt;1,008&lt;/td&gt;
 &lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;100000&lt;/td&gt; &lt;td&gt;886&lt;/td&gt;    &lt;td&gt;1018&lt;/td&gt;   &lt;td&gt;1018&lt;/td&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;100,000&lt;/td&gt;    &lt;td&gt;886&lt;/td&gt;    &lt;td&gt;1,018&lt;/td&gt;  &lt;td&gt;1,018&lt;/td&gt;
 &lt;/tr&gt;
-&lt;tr&gt;
-&lt;td&gt;1000000&lt;/td&gt;    &lt;td&gt;885&lt;/td&gt;    &lt;td&gt;1023&lt;/td&gt;   &lt;td&gt;1015&lt;/td&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;1,000,000&lt;/td&gt;  &lt;td&gt;885&lt;/td&gt;    &lt;td&gt;1,023&lt;/td&gt;  &lt;td&gt;1,015&lt;/td&gt;
 &lt;/tr&gt;
 &lt;/tbody&gt;
 &lt;/table&gt;
