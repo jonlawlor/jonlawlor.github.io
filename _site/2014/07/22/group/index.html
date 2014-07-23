@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en-us">
+
+  <head>
+  <link href="http://gmpg.org/xfn/11" rel="profile">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+
+  <!-- Enable responsiveness on mobile devices-->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+
+  <title>
+    
+      Group &middot; Relational Data Streams in Go
+    
+  </title>
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="/public/css/poole.css">
+  <link rel="stylesheet" href="/public/css/syntax.css">
+  <link rel="stylesheet" href="/public/css/lanyon.css">
+  <link rel="stylesheet" href="http://fonts.googleapis.com/css?family=PT+Serif:400,400italic,700|PT+Sans:400">
+
+  <!-- Icons -->
+  <link rel="apple-touch-icon-precomposed" sizes="144x144" href="/public/apple-touch-icon-precomposed.png">
+  <link rel="shortcut icon" href="/public/favicon.ico">
+
+  <!-- RSS -->
+  <link rel="alternate" type="application/rss+xml" title="RSS" href="/atom.xml">
+</head>
+
+
+  <body>
+
+    <!-- Target for toggling the sidebar `.sidebar-checkbox` is for regular
+     styles, `#sidebar-checkbox` for behavior. -->
+<input type="checkbox" class="sidebar-checkbox" id="sidebar-checkbox">
+
+<!-- Toggleable sidebar -->
+<div class="sidebar" id="sidebar">
+  <div class="sidebar-item">
+    <p>Combining relational algebra with pipelines in Go.<br>C. A. R. Hoare meets E. F. Codd!</p>
+  </div>
+
+  <nav class="sidebar-nav">
+    <a class="sidebar-nav-item" href="/">Home</a>
+
+    
+
+    
+    
+      
+        
+      
+    
+      
+        
+          <a class="sidebar-nav-item" href="/about/">About</a>
+        
+      
+    
+      
+    
+      
+        
+      
+    
+
+  </nav>
+
+  <div class="sidebar-item">
+    <p>
+      &copy; 2014. All rights reserved.
+    </p>
+  </div>
+</div>
+
+
+    <!-- Wrap is the content to shift when toggling the sidebar. We wrap the
+         content to avoid any CSS collisions with our real content. -->
+    <div class="wrap">
+      <div class="masthead">
+        <div class="container">
+          <h3 class="masthead-title">
+            <a href="/" title="Home">Relational Data Streams in Go</a>
+            <small></small>
+          </h3>
+        </div>
+      </div>
+
+      <div class="container content">
+        <div class="post">
+  <h1 class="post-title">Group</h1>
+  <span class="post-date">22 Jul 2014</span>
+  <p>Group is a non-relational primative that I will be using to construct relational operations.  The basic idea is to put similar tuples together in a channel, and to delimit when a new similar group is being sent by putting it into another channel.</p>
+
+<p>As an example, if we use the tuple type from before:</p>
+
+<div class="highlight"><pre><code class="go"><span class="kd">type</span> <span class="nx">tuple</span> <span class="kd">struct</span> <span class="p">{</span>
+  <span class="nx">foo</span> <span class="kt">int</span>
+  <span class="nx">bar</span> <span class="kt">int</span>
+<span class="p">}</span></code></pre></div>
+
+<p>Then given an example channel which produces tuples:</p>
+
+<div class="highlight"><pre><code class="go"><span class="nx">ch</span> <span class="o">:=</span> <span class="nb">make</span><span class="p">(</span><span class="kd">chan</span><span class="o">&lt;-</span> <span class="nx">tuple</span><span class="p">)</span>
+<span class="nx">ch</span> <span class="o">&lt;-</span> <span class="nx">tuple</span><span class="p">{</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">}</span>
+<span class="nx">ch</span> <span class="o">&lt;-</span> <span class="nx">tuple</span><span class="p">{</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">}</span>
+<span class="nx">ch</span> <span class="o">&lt;-</span> <span class="nx">tuple</span><span class="p">{</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">}</span>
+<span class="nx">ch</span> <span class="o">&lt;-</span> <span class="nx">tuple</span><span class="p">{</span><span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">}</span>
+<span class="nx">ch</span> <span class="o">&lt;-</span> <span class="nx">tuple</span><span class="p">{</span><span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">}</span></code></pre></div>
+
+<p>Then we want the <code>group</code> function to produce a channel that returns a channel that produces {1,1}, {1,2}, {1,3}, and then closes, and then produce the values {2,1}, {2,2} on another channel, and then closes that one.  Both of those channels will be returned in a channel, which can be thought of as a channel of groups.</p>
+
+<p>The requirements for a group function are as follows:</p>
+
+<ul>
+<li>Takes input tuples from a channel with tuples that can be compared for equality.  Typically this will mean that some of the fields in a structure are equal, although it could also be values in a range, or values that are close to each other.</li>
+<li>Sends the result tuples on a channel of channels of tuples.  The inner channels each contain the similar group of tuples, and the outer channel represents the channel of all groups of tuples.</li>
+</ul>
+
+<p>On the face of it, we have a big problem if we try to perform this on an unordered input.  When the input is unordered, the last input tuple could belong to the same group as the first input tuple, which means that we can&#39;t close the first group channel before the last input tuple has been examined.  With that in mind, we&#39;ll implement the ordered version first.</p>
+
+<h3>Ordered Implementation</h3>
+
+<p>For a predicate, I typically use</p>
+
+<div class="highlight"><pre><code class="go"><span class="kd">type</span> <span class="nx">predicate</span> <span class="kd">func</span><span class="p">(</span><span class="nx">t1</span><span class="p">,</span> <span class="nx">t2</span> <span class="o">*</span><span class="nx">tuple</span><span class="p">)</span> <span class="kt">bool</span>
+
+<span class="nx">p</span> <span class="o">:=</span> <span class="kd">func</span><span class="p">(</span><span class="nx">t1</span><span class="p">,</span> <span class="nx">t2</span> <span class="o">*</span><span class="nx">tuple</span><span class="p">)</span> <span class="kt">bool</span> <span class="p">{</span> <span class="k">return</span> <span class="nx">t1</span><span class="p">.</span><span class="nx">foo</span> <span class="o">==</span> <span class="nx">t2</span><span class="p">.</span><span class="nx">foo</span> <span class="p">}</span></code></pre></div>
+
+<script src="https://gist.github.com/jonlawlor/9d2ef31380685339693a.js"> </script>
+
+<p>This function is a bit hairier than <a href="/2014/07/18/distinct/">distinct</a>, but the 
+<div class="highlight"><pre><code class="go"><span class="kd">chan</span><span class="o">&lt;-</span> <span class="p">(</span><span class="kd">chan</span><span class="o">&lt;-</span> <span class="nx">tuple</span><span class="p">)</span></code></pre></div>
+ is actually a great fit for the problem.  We also could have made the buffering adaptive, and had it determine the length of the buffer based on the number of tuples in previous groups.  Also, note that the output has the same ordering as the input.</p>
+
+<h3>Ordered Performance</h3>
+
+<p>The following table compares the amount of time it takes to perform the first <code>group</code> implementation on varying sizes of inputs.  Because the performance depends on both the number of input tuples and the number of unique tuples, I tried a variety of different combinations.  The leftmost column gives the number of tuples sent to the distinct function, and the other columns measure how long it took to perform distinct, given that it has (as many as, not exactly) some number of unique tuples.  All performance measurements are done on a Macbook with a 2.13 GHz Intel Core 2 Duo and 4 GB of RAM.  Times are in ns / operation.</p>
+
+<table>
+  <thead>
+    <tr align="right">
+      <th>Tuples</th>
+      <th>3 Unique</th>
+      <th>1,000 Unique</th>
+      <th>100,000 Unique</th>
+    </tr>
+  </thead>
+<tbody>
+<tr align="right">
+<td>10</td> <td>20,323</td> <td>53,033</td> <td>54,202</td>
+</tr>
+<tr align="right">
+<td>100</td>    <td>157,572</td>    <td>317,374</td>    <td>285,858</td>
+</tr>
+<tr align="right">
+<td>1,000</td>  <td>1,455,730</td>  <td>2,093,007</td>  <td>2,095,497</td>
+</tr>
+<tr align="right">
+<td>10,000</td> <td>14,780,515</td> <td>20,130,534</td> <td>21,011,306</td>
+</tr>
+<tr align="right">
+<td>100,000</td>    <td>151,403,277</td>    <td>191,331,425</td>    <td>220,990,957</td>
+</tr>
+<tr align="right">
+<td>1,000,000</td>  <td>1,524,802,692</td>  <td>1,741,569,855</td>  <td>1,756,899,742</td>
+</tr>
+</tbody>
+</table>
+
+<p>If you divide through by the number of tuples, you get the following table (units are in ns/tuple)</p>
+
+<table>
+  <thead>
+    <tr align="right">
+      <th>Tuples</th>
+      <th>3 Unique</th>
+      <th>1,000 Unique</th>
+      <th>100,000 Unique</th>
+    </tr>
+  </thead>
+<tbody>
+<tr align="right">
+<td>10</td> <td>2,032</td>  <td>5,303</td>  <td>5,420</td>
+</tr>
+<tr align="right">
+<td>100</td>    <td>1,576</td>  <td>3,174</td>  <td>2,859</td>
+</tr>
+<tr align="right">
+<td>1,000</td>  <td>1,456</td>  <td>2,093</td>  <td>2,095</td>
+</tr>
+<tr align="right">
+<td>10,000</td> <td>1,478</td>  <td>2,013</td>  <td>2,101</td>
+</tr>
+<tr align="right">
+<td>100,000</td>    <td>1,514</td>  <td>1,913</td>  <td>2,210</td>
+</tr>
+<tr align="right">
+<td>1,000,000</td>  <td>1,525</td>  <td>1,742</td>  <td>1,757</td>
+</tr>
+</tbody>
+</table>
+
+<p>Other than a small startup cost, it seems to stabilize around 1,750 ns/tuple, which is a bit more than 500k tuples/second.  The results are in the same order as the input, as well.</p>
+
+<h3>Unordered Implementation</h3>
+
+<p>Now to implement the unordered version.  It can&#39;t perform the same kind of arbitrary predicate evaluation as the ordered version.  </p>
+
+<p>The most natural way to represent the groups is to have each group in a map, where the key is a subdomain of the input tuple, and the values of the map are slices of tuples that belong to a group.  We can start producing values on the first group immediately, but every group after that has to wait for the input to close, which can cause significant latency if it blocks.</p>
+
+<p>Also, basically all of the tuples will be in memory, so for large data sets, this implementation will need some more work.  The results will be unordered, but it will be able to produce initial values quickly, which will be useful later.</p>
+
+<p>For testing, I use something like this:</p>
+
+<div class="highlight"><pre><code class="go"><span class="c1">// we can only perform grouping on equality when we&#39;re using a hash</span>
+<span class="kd">type</span> <span class="nx">subTup</span> <span class="kd">struct</span><span class="p">{</span> <span class="nx">foo</span> <span class="kt">int</span> <span class="p">}</span>
+
+<span class="kd">func</span> <span class="nx">proj</span><span class="p">(</span><span class="nx">t</span> <span class="o">*</span><span class="nx">tuple</span><span class="p">)</span> <span class="nx">subTup</span> <span class="p">{</span> <span class="k">return</span> <span class="nx">subTup</span><span class="p">{</span><span class="nx">t</span><span class="p">.</span><span class="nx">foo</span><span class="p">}</span> <span class="p">}</span></code></pre></div>
+
+<script src="https://gist.github.com/jonlawlor/bdd38e1448a261095706.js"> </script>
+
+<h3>Performance</h3>
+
+<table>
+  <thead>
+    <tr align="right">
+      <th>Tuples</th>
+      <th>3 Unique</th>
+      <th>1,000 Unique</th>
+      <th>100,000 Unique</th>
+    </tr>
+  </thead>
+<tbody>
+<tr align="right">
+<td>10</td> <td>21,071</td> <td>26,271</td> <td>27,268</td>
+</tr>
+<tr align="right">
+<td>100</td>    <td>146,088</td>    <td>232,951</td>    <td>243,976</td>
+</tr>
+<tr align="right">
+<td>1,000</td>  <td>1,369,260</td>  <td>2,078,356</td>  <td>2,534,798</td>
+</tr>
+<tr align="right">
+<td>10,000</td> <td>13,725,700</td> <td>16,817,520</td> <td>25,318,781</td>
+</tr>
+<tr align="right">
+<td>100,000</td>    <td>135,798,571</td>    <td>159,113,453</td>    <td>238,822,794</td>
+</tr>
+<tr align="right">
+<td>1,000,000</td>  <td>1,373,282,652</td>  <td>1,536,476,473</td>  <td>1,835,299,731</td>
+</tr>
+</tbody>
+</table>
+
+<p>So the performance is basically the same or better than the ordered version (~500k tuples/second), despite having to fully populate the map of groups to tuples before sending the data from the second group onwards.  I find that amazing and I had expected it to be much worse, because each tuple has more comparisons this way, and the slices have to append many times.  Of course, in testing I never blocked the input, which would most likely occur in real world situations, so it is much more sensitive to input performance.</p>
+
+<h3>Parallel Unordered Implementation</h3>
+
+<p>We can use the same striping method used in the <a href="/2014/07/18/distinct/">distinct</a> parallel implementation to parallelize the grouping operation.  Basically, each tuple goes through a call to modulo to determine which grouping goroutine it should be sent to, and everything else is basically the same.</p>
+
+<script src="https://gist.github.com/jonlawlor/ca8a37edae9926e1db55.js"> </script>
+
+<h3>Parallel Unordered Performance</h3>
+
+<p>I ran the parallel implementation with GOMAXPROCS set to 2:</p>
+
+<table>
+  <thead>
+    <tr align="right">
+      <th>Tuples</th>
+      <th>3 Unique</th>
+      <th>1,000 Unique</th>
+      <th>100,000 Unique</th>
+    </tr>
+  </thead>
+<tbody>
+<tr align="right">
+<td>10</td> <td>50,180</td> <td>78,559</td> <td>101,311</td>
+</tr>
+<tr align="right">
+<td>100</td>    <td>259,308</td>    <td>445,692</td>    <td>480,127</td>
+</tr>
+<tr align="right">
+<td>1,000</td>  <td>2,111,440</td>  <td>3,572,496</td>  <td>4,134,282</td>
+</tr>
+<tr align="right">
+<td>10,000</td> <td>23,890,105</td> <td>32,874,142</td> <td>38,772,126</td>
+</tr>
+<tr align="right">
+<td>100,000</td>    <td>289,065,745</td>    <td>272,000,854</td>    <td>322,471,274</td>
+</tr>
+<tr align="right">
+<td>1,000,000</td>  <td>3,018,390,109</td>  <td>2,748,059,524</td>  <td>3,806,559,013</td>
+</tr>
+</tbody>
+</table>
+
+<p>This performance is significantly worse than either of the two other versions, which probably means that context switching is killing the performance (~250k tuples/sec).  It is possible that with some hardware and tuple types this would outperform the unordered version, though.  If anyone has a more performant implementation I&#39;d love to revisit this code, because it will be central to some later relational operations.  I&#39;ve got to say I like how the same slicing idiom works in unordered approaches.</p>
+
+<h3>Conclusions</h3>
+
+<p>These grouping operations aren&#39;t quite as fast as distinct, but they are still quite fast.  I&#39;m surprised by how fast the unordered group operation is, and somewhat less surprised that striping didn&#39;t help matters.  There is still some work to be done - in particular, the groups should be cancel-able for them to be really useful, which is something I&#39;m going to add in a later post.  Also, if you have a better implementation I would be happy to update this post or add it to a later one, as appropriate!</p>
+
+<h3>Thanks</h3>
+
+<p>I&#39;m happy to thank mb0 and brentmn on #go-nuts.  mb0 wrote a much more appropriate data structure I was using for the unordered grouping operation, and the result was far superior speed and lower memory usage.  If you are morbidly curious, I had originally implemented the grouping with a goroutine for each of the groups, that was live until the input closed.  When large amounts of unique inputs were set to that version, the benchmarks couldn&#39;t even complete in some cases!  brentmn pointed out a race condition as well, although I didn&#39;t track it down and instead just re-implemented the whole thing.  So lesson learned: first implement without goroutines or channels.  Boil down your algorithm to the simplest thing you can, and add complications later.</p>
+
+</div>
+
+<div class="related">
+  <h2>Related Posts</h2>
+  <ul class="related-posts">
+    
+      <li>
+        <h3>
+          <a href="/2014/07/18/distinct/">
+            Distinct
+            <small>18 Jul 2014</small>
+          </a>
+        </h3>
+      </li>
+    
+      <li>
+        <h3>
+          <a href="/2014/07/17/why-relational-datastreams/">
+            When and Why to use Relational Datastreams
+            <small>17 Jul 2014</small>
+          </a>
+        </h3>
+      </li>
+    
+  </ul>
+</div>
+
+    <div id="disqus_thread"></div>
+    <script type="text/javascript">
+        /* * * CONFIGURATION VARIABLES: EDIT BEFORE PASTING INTO YOUR WEBPAGE * * */
+        var disqus_shortname = 'relationaldatastructuresingo'; // required: replace example with your forum shortname
+
+        /* * * DON'T EDIT BELOW THIS LINE * * */
+        (function() {
+            var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+            dsq.src = '//' + disqus_shortname + '.disqus.com/embed.js';
+            (document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+        })();
+    </script>
+    <noscript>Please enable JavaScript to view the <a href="http://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+    <a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+
+      </div>
+    </div>
+
+    <label for="sidebar-checkbox" class="sidebar-toggle"></label>
+
+    <script>
+      (function(document) {
+        var toggle = document.querySelector('.sidebar-toggle');
+        var sidebar = document.querySelector('#sidebar');
+        var checkbox = document.querySelector('#sidebar-checkbox');
+
+        document.addEventListener('click', function(e) {
+          var target = e.target;
+
+          if(!checkbox.checked ||
+             sidebar.contains(target) ||
+             (target === checkbox || target === toggle)) return;
+
+          checkbox.checked = false;
+        }, false);
+      })(document);
+    </script>
+  </body>
+</html>

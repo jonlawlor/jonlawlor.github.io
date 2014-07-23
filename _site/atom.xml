@@ -4,13 +4,236 @@
  <title>Relational Data Streams in Go</title>
  <link href="http://jonlawlor.github.io/atom.xml" rel="self"/>
  <link href="http://jonlawlor.github.io/"/>
- <updated>2014-07-21T19:28:03-04:00</updated>
+ <updated>2014-07-22T22:55:08-04:00</updated>
  <id>http://jonlawlor.github.io</id>
  <author>
    <name>Jonathan J Lawlor</name>
    <email>jonathan.lawlor@gmail.com</email>
  </author>
 
+ 
+ <entry>
+   <title>Group</title>
+   <link href="http://jonlawlor.github.io/2014/07/22/group/"/>
+   <updated>2014-07-22T00:00:00-04:00</updated>
+   <id>http://jonlawlor.github.io/2014/07/22/group</id>
+   <content type="html">&lt;p&gt;Group is a non-relational primative that I will be using to construct relational operations.  The basic idea is to put similar tuples together in a channel, and to delimit when a new similar group is being sent by putting it into another channel.&lt;/p&gt;
+
+&lt;p&gt;As an example, if we use the tuple type from before:&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;go&quot;&gt;&lt;span class=&quot;kd&quot;&gt;type&lt;/span&gt; &lt;span class=&quot;nx&quot;&gt;tuple&lt;/span&gt; &lt;span class=&quot;kd&quot;&gt;struct&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+  &lt;span class=&quot;nx&quot;&gt;foo&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt;
+  &lt;span class=&quot;nx&quot;&gt;bar&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;Then given an example channel which produces tuples:&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;go&quot;&gt;&lt;span class=&quot;nx&quot;&gt;ch&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;:=&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;make&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;kd&quot;&gt;chan&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;lt;-&lt;/span&gt; &lt;span class=&quot;nx&quot;&gt;tuple&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;nx&quot;&gt;ch&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;-&lt;/span&gt; &lt;span class=&quot;nx&quot;&gt;tuple&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;nx&quot;&gt;ch&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;-&lt;/span&gt; &lt;span class=&quot;nx&quot;&gt;tuple&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;nx&quot;&gt;ch&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;-&lt;/span&gt; &lt;span class=&quot;nx&quot;&gt;tuple&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;3&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;nx&quot;&gt;ch&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;-&lt;/span&gt; &lt;span class=&quot;nx&quot;&gt;tuple&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;nx&quot;&gt;ch&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;-&lt;/span&gt; &lt;span class=&quot;nx&quot;&gt;tuple&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;p&gt;Then we want the &lt;code&gt;group&lt;/code&gt; function to produce a channel that returns a channel that produces {1,1}, {1,2}, {1,3}, and then closes, and then produce the values {2,1}, {2,2} on another channel, and then closes that one.  Both of those channels will be returned in a channel, which can be thought of as a channel of groups.&lt;/p&gt;
+
+&lt;p&gt;The requirements for a group function are as follows:&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;Takes input tuples from a channel with tuples that can be compared for equality.  Typically this will mean that some of the fields in a structure are equal, although it could also be values in a range, or values that are close to each other.&lt;/li&gt;
+&lt;li&gt;Sends the result tuples on a channel of channels of tuples.  The inner channels each contain the similar group of tuples, and the outer channel represents the channel of all groups of tuples.&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;On the face of it, we have a big problem if we try to perform this on an unordered input.  When the input is unordered, the last input tuple could belong to the same group as the first input tuple, which means that we can&amp;#39;t close the first group channel before the last input tuple has been examined.  With that in mind, we&amp;#39;ll implement the ordered version first.&lt;/p&gt;
+
+&lt;h3&gt;Ordered Implementation&lt;/h3&gt;
+
+&lt;p&gt;For a predicate, I typically use&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;go&quot;&gt;&lt;span class=&quot;kd&quot;&gt;type&lt;/span&gt; &lt;span class=&quot;nx&quot;&gt;predicate&lt;/span&gt; &lt;span class=&quot;kd&quot;&gt;func&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nx&quot;&gt;t1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nx&quot;&gt;t2&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;nx&quot;&gt;tuple&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;bool&lt;/span&gt;
+
+&lt;span class=&quot;nx&quot;&gt;p&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;:=&lt;/span&gt; &lt;span class=&quot;kd&quot;&gt;func&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nx&quot;&gt;t1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;nx&quot;&gt;t2&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;nx&quot;&gt;tuple&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;bool&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;nx&quot;&gt;t1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nx&quot;&gt;foo&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;==&lt;/span&gt; &lt;span class=&quot;nx&quot;&gt;t2&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nx&quot;&gt;foo&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;script src=&quot;https://gist.github.com/jonlawlor/9d2ef31380685339693a.js&quot;&gt; &lt;/script&gt;
+
+&lt;p&gt;This function is a bit hairier than &lt;a href=&quot;/2014/07/18/distinct/&quot;&gt;distinct&lt;/a&gt;, but the 
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;go&quot;&gt;&lt;span class=&quot;kd&quot;&gt;chan&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;lt;-&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;kd&quot;&gt;chan&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;lt;-&lt;/span&gt; &lt;span class=&quot;nx&quot;&gt;tuple&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+ is actually a great fit for the problem.  We also could have made the buffering adaptive, and had it determine the length of the buffer based on the number of tuples in previous groups.  Also, note that the output has the same ordering as the input.&lt;/p&gt;
+
+&lt;h3&gt;Ordered Performance&lt;/h3&gt;
+
+&lt;p&gt;The following table compares the amount of time it takes to perform the first &lt;code&gt;group&lt;/code&gt; implementation on varying sizes of inputs.  Because the performance depends on both the number of input tuples and the number of unique tuples, I tried a variety of different combinations.  The leftmost column gives the number of tuples sent to the distinct function, and the other columns measure how long it took to perform distinct, given that it has (as many as, not exactly) some number of unique tuples.  All performance measurements are done on a Macbook with a 2.13 GHz Intel Core 2 Duo and 4 GB of RAM.  Times are in ns / operation.&lt;/p&gt;
+
+&lt;table&gt;
+  &lt;thead&gt;
+    &lt;tr align=&quot;right&quot;&gt;
+      &lt;th&gt;Tuples&lt;/th&gt;
+      &lt;th&gt;3 Unique&lt;/th&gt;
+      &lt;th&gt;1,000 Unique&lt;/th&gt;
+      &lt;th&gt;100,000 Unique&lt;/th&gt;
+    &lt;/tr&gt;
+  &lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;10&lt;/td&gt; &lt;td&gt;20,323&lt;/td&gt; &lt;td&gt;53,033&lt;/td&gt; &lt;td&gt;54,202&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;100&lt;/td&gt;    &lt;td&gt;157,572&lt;/td&gt;    &lt;td&gt;317,374&lt;/td&gt;    &lt;td&gt;285,858&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;1,000&lt;/td&gt;  &lt;td&gt;1,455,730&lt;/td&gt;  &lt;td&gt;2,093,007&lt;/td&gt;  &lt;td&gt;2,095,497&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;10,000&lt;/td&gt; &lt;td&gt;14,780,515&lt;/td&gt; &lt;td&gt;20,130,534&lt;/td&gt; &lt;td&gt;21,011,306&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;100,000&lt;/td&gt;    &lt;td&gt;151,403,277&lt;/td&gt;    &lt;td&gt;191,331,425&lt;/td&gt;    &lt;td&gt;220,990,957&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;1,000,000&lt;/td&gt;  &lt;td&gt;1,524,802,692&lt;/td&gt;  &lt;td&gt;1,741,569,855&lt;/td&gt;  &lt;td&gt;1,756,899,742&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;p&gt;If you divide through by the number of tuples, you get the following table (units are in ns/tuple)&lt;/p&gt;
+
+&lt;table&gt;
+  &lt;thead&gt;
+    &lt;tr align=&quot;right&quot;&gt;
+      &lt;th&gt;Tuples&lt;/th&gt;
+      &lt;th&gt;3 Unique&lt;/th&gt;
+      &lt;th&gt;1,000 Unique&lt;/th&gt;
+      &lt;th&gt;100,000 Unique&lt;/th&gt;
+    &lt;/tr&gt;
+  &lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;10&lt;/td&gt; &lt;td&gt;2,032&lt;/td&gt;  &lt;td&gt;5,303&lt;/td&gt;  &lt;td&gt;5,420&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;100&lt;/td&gt;    &lt;td&gt;1,576&lt;/td&gt;  &lt;td&gt;3,174&lt;/td&gt;  &lt;td&gt;2,859&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;1,000&lt;/td&gt;  &lt;td&gt;1,456&lt;/td&gt;  &lt;td&gt;2,093&lt;/td&gt;  &lt;td&gt;2,095&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;10,000&lt;/td&gt; &lt;td&gt;1,478&lt;/td&gt;  &lt;td&gt;2,013&lt;/td&gt;  &lt;td&gt;2,101&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;100,000&lt;/td&gt;    &lt;td&gt;1,514&lt;/td&gt;  &lt;td&gt;1,913&lt;/td&gt;  &lt;td&gt;2,210&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;1,000,000&lt;/td&gt;  &lt;td&gt;1,525&lt;/td&gt;  &lt;td&gt;1,742&lt;/td&gt;  &lt;td&gt;1,757&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;p&gt;Other than a small startup cost, it seems to stabilize around 1,750 ns/tuple, which is a bit more than 500k tuples/second.  The results are in the same order as the input, as well.&lt;/p&gt;
+
+&lt;h3&gt;Unordered Implementation&lt;/h3&gt;
+
+&lt;p&gt;Now to implement the unordered version.  It can&amp;#39;t perform the same kind of arbitrary predicate evaluation as the ordered version.  &lt;/p&gt;
+
+&lt;p&gt;The most natural way to represent the groups is to have each group in a map, where the key is a subdomain of the input tuple, and the values of the map are slices of tuples that belong to a group.  We can start producing values on the first group immediately, but every group after that has to wait for the input to close, which can cause significant latency if it blocks.&lt;/p&gt;
+
+&lt;p&gt;Also, basically all of the tuples will be in memory, so for large data sets, this implementation will need some more work.  The results will be unordered, but it will be able to produce initial values quickly, which will be useful later.&lt;/p&gt;
+
+&lt;p&gt;For testing, I use something like this:&lt;/p&gt;
+
+&lt;div class=&quot;highlight&quot;&gt;&lt;pre&gt;&lt;code class=&quot;go&quot;&gt;&lt;span class=&quot;c1&quot;&gt;// we can only perform grouping on equality when we&amp;#39;re using a hash&lt;/span&gt;
+&lt;span class=&quot;kd&quot;&gt;type&lt;/span&gt; &lt;span class=&quot;nx&quot;&gt;subTup&lt;/span&gt; &lt;span class=&quot;kd&quot;&gt;struct&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;nx&quot;&gt;foo&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+
+&lt;span class=&quot;kd&quot;&gt;func&lt;/span&gt; &lt;span class=&quot;nx&quot;&gt;proj&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;nx&quot;&gt;t&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;nx&quot;&gt;tuple&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;nx&quot;&gt;subTup&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;nx&quot;&gt;subTup&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;&lt;span class=&quot;nx&quot;&gt;t&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nx&quot;&gt;foo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+
+&lt;script src=&quot;https://gist.github.com/jonlawlor/bdd38e1448a261095706.js&quot;&gt; &lt;/script&gt;
+
+&lt;h3&gt;Performance&lt;/h3&gt;
+
+&lt;table&gt;
+  &lt;thead&gt;
+    &lt;tr align=&quot;right&quot;&gt;
+      &lt;th&gt;Tuples&lt;/th&gt;
+      &lt;th&gt;3 Unique&lt;/th&gt;
+      &lt;th&gt;1,000 Unique&lt;/th&gt;
+      &lt;th&gt;100,000 Unique&lt;/th&gt;
+    &lt;/tr&gt;
+  &lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;10&lt;/td&gt; &lt;td&gt;21,071&lt;/td&gt; &lt;td&gt;26,271&lt;/td&gt; &lt;td&gt;27,268&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;100&lt;/td&gt;    &lt;td&gt;146,088&lt;/td&gt;    &lt;td&gt;232,951&lt;/td&gt;    &lt;td&gt;243,976&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;1,000&lt;/td&gt;  &lt;td&gt;1,369,260&lt;/td&gt;  &lt;td&gt;2,078,356&lt;/td&gt;  &lt;td&gt;2,534,798&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;10,000&lt;/td&gt; &lt;td&gt;13,725,700&lt;/td&gt; &lt;td&gt;16,817,520&lt;/td&gt; &lt;td&gt;25,318,781&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;100,000&lt;/td&gt;    &lt;td&gt;135,798,571&lt;/td&gt;    &lt;td&gt;159,113,453&lt;/td&gt;    &lt;td&gt;238,822,794&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;1,000,000&lt;/td&gt;  &lt;td&gt;1,373,282,652&lt;/td&gt;  &lt;td&gt;1,536,476,473&lt;/td&gt;  &lt;td&gt;1,835,299,731&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;p&gt;So the performance is basically the same or better than the ordered version (~500k tuples/second), despite having to fully populate the map of groups to tuples before sending the data from the second group onwards.  I find that amazing and I had expected it to be much worse, because each tuple has more comparisons this way, and the slices have to append many times.  Of course, in testing I never blocked the input, which would most likely occur in real world situations, so it is much more sensitive to input performance.&lt;/p&gt;
+
+&lt;h3&gt;Parallel Unordered Implementation&lt;/h3&gt;
+
+&lt;p&gt;We can use the same striping method used in the &lt;a href=&quot;/2014/07/18/distinct/&quot;&gt;distinct&lt;/a&gt; parallel implementation to parallelize the grouping operation.  Basically, each tuple goes through a call to modulo to determine which grouping goroutine it should be sent to, and everything else is basically the same.&lt;/p&gt;
+
+&lt;script src=&quot;https://gist.github.com/jonlawlor/ca8a37edae9926e1db55.js&quot;&gt; &lt;/script&gt;
+
+&lt;h3&gt;Parallel Unordered Performance&lt;/h3&gt;
+
+&lt;p&gt;I ran the parallel implementation with GOMAXPROCS set to 2:&lt;/p&gt;
+
+&lt;table&gt;
+  &lt;thead&gt;
+    &lt;tr align=&quot;right&quot;&gt;
+      &lt;th&gt;Tuples&lt;/th&gt;
+      &lt;th&gt;3 Unique&lt;/th&gt;
+      &lt;th&gt;1,000 Unique&lt;/th&gt;
+      &lt;th&gt;100,000 Unique&lt;/th&gt;
+    &lt;/tr&gt;
+  &lt;/thead&gt;
+&lt;tbody&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;10&lt;/td&gt; &lt;td&gt;50,180&lt;/td&gt; &lt;td&gt;78,559&lt;/td&gt; &lt;td&gt;101,311&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;100&lt;/td&gt;    &lt;td&gt;259,308&lt;/td&gt;    &lt;td&gt;445,692&lt;/td&gt;    &lt;td&gt;480,127&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;1,000&lt;/td&gt;  &lt;td&gt;2,111,440&lt;/td&gt;  &lt;td&gt;3,572,496&lt;/td&gt;  &lt;td&gt;4,134,282&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;10,000&lt;/td&gt; &lt;td&gt;23,890,105&lt;/td&gt; &lt;td&gt;32,874,142&lt;/td&gt; &lt;td&gt;38,772,126&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;100,000&lt;/td&gt;    &lt;td&gt;289,065,745&lt;/td&gt;    &lt;td&gt;272,000,854&lt;/td&gt;    &lt;td&gt;322,471,274&lt;/td&gt;
+&lt;/tr&gt;
+&lt;tr align=&quot;right&quot;&gt;
+&lt;td&gt;1,000,000&lt;/td&gt;  &lt;td&gt;3,018,390,109&lt;/td&gt;  &lt;td&gt;2,748,059,524&lt;/td&gt;  &lt;td&gt;3,806,559,013&lt;/td&gt;
+&lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+
+&lt;p&gt;This performance is significantly worse than either of the two other versions, which probably means that context switching is killing the performance (~250k tuples/sec).  It is possible that with some hardware and tuple types this would outperform the unordered version, though.  If anyone has a more performant implementation I&amp;#39;d love to revisit this code, because it will be central to some later relational operations.  I&amp;#39;ve got to say I like how the same slicing idiom works in unordered approaches.&lt;/p&gt;
+
+&lt;h3&gt;Conclusions&lt;/h3&gt;
+
+&lt;p&gt;These grouping operations aren&amp;#39;t quite as fast as distinct, but they are still quite fast.  I&amp;#39;m surprised by how fast the unordered group operation is, and somewhat less surprised that striping didn&amp;#39;t help matters.  There is still some work to be done - in particular, the groups should be cancel-able for them to be really useful, which is something I&amp;#39;m going to add in a later post.  Also, if you have a better implementation I would be happy to update this post or add it to a later one, as appropriate!&lt;/p&gt;
+
+&lt;h3&gt;Thanks&lt;/h3&gt;
+
+&lt;p&gt;I&amp;#39;m happy to thank mb0 and brentmn on #go-nuts.  mb0 wrote a much more appropriate data structure I was using for the unordered grouping operation, and the result was far superior speed and lower memory usage.  If you are morbidly curious, I had originally implemented the grouping with a goroutine for each of the groups, that was live until the input closed.  When large amounts of unique inputs were set to that version, the benchmarks couldn&amp;#39;t even complete in some cases!  brentmn pointed out a race condition as well, although I didn&amp;#39;t track it down and instead just re-implemented the whole thing.  So lesson learned: first implement without goroutines or channels.  Boil down your algorithm to the simplest thing you can, and add complications later.&lt;/p&gt;
+</content>
+ </entry>
  
  <entry>
    <title>Distinct</title>
