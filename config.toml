@@ -1,4 +1,4 @@
-baseurl = "https://lawlor.io/"
+baseurl = "https://jonlawlor.github.io/"
 title = "Gonum"
 theme = "hugo-universal-theme"
 languageCode = "en-us"
