@@ -1,0 +1,10 @@
+weight: 2
+title: "plot"
+description: >
+  <ul class="list-style-none">
+    <li>All kinds of plots</li>
+    <li>I mean really</li>
+    <li>This is a placeholder</li>
+  </ul>
+image: "img/carousel/gopher_tie_dye.png"
+url: "https://github.com/gonum/plot"
