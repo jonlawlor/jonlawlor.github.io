@@ -1,0 +1,10 @@
+weight: 1
+title: "matrix"
+description: >
+  <ul class="list-style-none">
+    <li>Linear algebra</li>
+    <li>Pure Go implementation</li>
+    <li>BLAS and LAPACK drivers</li>
+  </ul>
+image: "img/carousel/gopher_matrix.png"
+url: "https://github.com/gonum/matrix"
